@@ -128,7 +128,9 @@ router.beforeEach((to) => {
   if (role !== 'PARENT' && !free && to.path.startsWith('/p/')) return '/'
   if (role === 'GUARD' && !free && !to.path.startsWith('/g/')) return '/g/home'
   if (role !== 'GUARD' && !free && to.path.startsWith('/g/')) return '/'
-  if (role !== 'LEADER' && to.path.startsWith('/l/')) return '/'
+  // 批49：/l/scores（全校成绩汇总）放开给成绩可见角色（管理员/书记/级长/SCORE_ALL 权限点）；其余 /l/* 仅领导
+  if (role !== 'LEADER' && to.path.startsWith('/l/')
+    && !(to.path === '/l/scores' && auth.scoreAccess)) return '/'
 })
 
 export default router

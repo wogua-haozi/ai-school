@@ -46,6 +46,7 @@ public class AuthService {
     private final InviteCodeMapper inviteCodeMapper;
     private final StudentMapper studentMapper;
     private final ParentBindingMapper parentBindingMapper;
+    private final PermissionService permissionService;
 
     /** 家长自助注册（批8.6）：学号+邀请码绑定孩子；自助绑定每生上限 2 个（管理端/班主任绑定不受限）。
      *  手机号即登录名；密码自设（≥8 位，无强制改密）。成功即登录，返回与 login 相同结构。 */
@@ -128,6 +129,7 @@ public class AuthService {
         us.put("realName", u.getRealName());
         us.put("role", u.getRole());
         us.put("mustChangePassword", false);
+        us.put("perms", permissionService.permsOf(u.getId()));
         m.put("user", us);
         return m;
     }
@@ -163,6 +165,7 @@ public class AuthService {
         u.put("realName", user.getRealName());
         u.put("role", user.getRole());
         u.put("mustChangePassword", mustChangePwd);
+        u.put("perms", permissionService.permsOf(user.getId())); // 批49：权限点随登录下发，前端门控用
         m.put("user", u);
         return m;
     }

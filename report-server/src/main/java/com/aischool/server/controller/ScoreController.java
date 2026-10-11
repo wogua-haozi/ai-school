@@ -55,7 +55,7 @@ public class ScoreController {
         private List<ScoreService.RowReq> rows;
     }
 
-    /** 建考试（任意教师可建，2026-08-30 校方拍板放开） */
+    /** 建考试（批49 随上传权限收紧：ADMIN/书记/级长） */
     @PostMapping("/exam")
     public ApiResponse<Map<String, Object>> createExam(@Validated @RequestBody ExamReq req) {
         Long id = scoreService.createExam(AuthUtil.current(), req.getTermId(), req.getName(),
@@ -63,26 +63,34 @@ public class ScoreController {
         return ApiResponse.ok(Map.of("examId", id));
     }
 
-    /** 考试列表（任意登录；批4 附 entryOpen 窗口状态） */
+    /** 考试列表（批49 限成绩可见角色，教师零入口；附 entryOpen 窗口状态） */
     @GetMapping("/exam/list")
     public ApiResponse<List<Map<String, Object>>> examList() {
-        return ApiResponse.ok(scoreService.examList());
+        return ApiResponse.ok(scoreService.examList(AuthUtil.current()));
     }
 
-    /** 批40e 撤回普适：删除整场考试（管理员；含其下全部成绩，误建撤回） */
+    /** 批40e 撤回普适：删除整场考试（含其下全部成绩，误建撤回）。批49：管理员/书记（全部权限）或 ADMIN_ACCESS 领导 */
     @DeleteMapping("/exam/{id}")
     public ApiResponse<Void> deleteExam(@PathVariable Long id) {
-        permissionService.checkAdminAccess("只有管理员可删除考试");
+        checkScoreAdmin("只有管理员或书记可删除考试");
         scoreService.deleteExam(id);
         return ApiResponse.ok(null);
     }
 
-    /** 开关录入窗口（批4 管理端考试页签；管理员或有 ADMIN_ACCESS 的领导） */
+    /** 开关录入窗口（批4 管理端考试页签）。批49：管理员/书记（全部权限）或 ADMIN_ACCESS 领导 */
     @PutMapping("/exam/{id}/entry-open")
     public ApiResponse<Void> setEntryOpen(@PathVariable Long id, @RequestBody EntryOpenReq req) {
-        permissionService.checkAdminAccess("只有管理员可开关成绩录入窗口");
+        checkScoreAdmin("只有管理员或书记可开关成绩录入窗口");
         scoreService.setEntryOpen(id, Boolean.TRUE.equals(req.getOpen()));
         return ApiResponse.ok(null);
+    }
+
+    /** 成绩域管理动作门（批49 甲方口径：管理员、书记拥有全部权限） */
+    private void checkScoreAdmin(String message) {
+        if ("SECRETARY".equals(AuthUtil.current().role())) {
+            return;
+        }
+        permissionService.checkAdminAccess(message);
     }
 
     @Data

@@ -5,6 +5,8 @@
     <motion.div class="login-card"
       :initial="{ opacity: 0, y: 30, scale: 0.96 }" :animate="{ opacity: 1, y: 0, scale: 1 }"
       :transition="{ type: 'spring', stiffness: 240, damping: 22 }">
+      <!-- 批49② 正门照专门展示区（卡片顶部横幅；素材位 login-gate 可由校方自助替换） -->
+      <img class="login-gate" :src="gateUrl" alt="石实实验学校正门">
       <div class="login-head">
         <img class="login-logo" src="/badge.png" alt="">
         <h1>学生素质成长报告平台</h1>
@@ -51,13 +53,17 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { reactive, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { motion } from 'motion-v'
 import { showSuccessToast, showFailToast } from 'vant'
 import { api, apiBase } from '../api/http'
 import { isNative } from '../api/nativeShare'
 import { useAuthStore } from '../stores/auth'
+import { useAssetStore } from '../stores/asset'
+
+const asset = useAssetStore()
+const gateUrl = computed(() => asset.url('login-gate', '/login-gate.jpg'))
 
 const form = reactive({ username: '', password: '' })
 const loading = ref(false)
@@ -83,7 +89,7 @@ async function doLogin() {
   if (!form.username || !form.password) return
   loading.value = true
   try {
-    const data = await api<{ token: string; user: { realName: string; role: string; mustChangePassword?: boolean } }>('/api/auth/login', {
+    const data = await api<{ token: string; user: { realName: string; role: string; mustChangePassword?: boolean; perms?: string[] } }>('/api/auth/login', {
       method: 'POST',
       // 手机输入法易带首尾空格/全角字符（全角字母数字→半角），静默清掉防"密码对的也 401"
       json: {
@@ -91,7 +97,7 @@ async function doLogin() {
         password: form.password.trim(),
       },
     })
-    auth.set(data.token, data.user.realName, data.user.role, !!data.user.mustChangePassword)
+    auth.set(data.token, data.user.realName, data.user.role, !!data.user.mustChangePassword, data.user.perms ?? [])
     // 管理员设密/重置/批量导入的账号：首登强制先改密
     router.push(data.user.mustChangePassword ? '/change-password' : '/')
   } catch (e) {
@@ -127,16 +133,23 @@ async function doLogin() {
   background: rgba(255,255,255,.94); backdrop-filter: blur(14px);
   border: 1px solid rgba(255,255,255,.5); border-radius: 20px;
   box-shadow: 0 16px 48px rgba(9,18,46,.45);
-  padding: 28px 18px 18px;
+  padding: 0 18px 18px;
 }
-.login-head { text-align: center; margin-bottom: 18px; }
-.login-logo { width: 52px; height: auto; }
+/* 批49② 正门照横幅：顶到卡片圆角边（负边距抵消卡片水平 padding） */
+.login-gate {
+  display: block; width: calc(100% + 36px); margin: 0 -18px; height: 138px;
+  object-fit: cover; object-position: center 42%;
+  border-radius: 19px 19px 0 0;
+  border-bottom: 1px solid rgba(255,255,255,.55);
+}
+.login-head { text-align: center; margin: 12px 0 12px; }
+.login-logo { width: 38px; height: auto; margin-top: 2px; }
 .login-head h1 {
-  margin: 10px 0 4px; font-size: 24px; font-weight: 800; letter-spacing: 4px;
+  margin: 7px 0 3px; font-size: 19px; font-weight: 800; letter-spacing: 2px;
   background: linear-gradient(150deg, #A8232B, #C9A227);
   -webkit-background-clip: text; background-clip: text; color: transparent;
 }
-.login-head p { margin: 0; font-size: 12px; color: var(--app-text-2); letter-spacing: 1px; }
+.login-head p { margin: 0; font-size: 11.5px; color: var(--app-text-2); letter-spacing: 1px; }
 .login-head .motto { margin-top: 6px; color: var(--app-gold); letter-spacing: 3px; }
 
 .fields { margin: 0 0 14px; border-radius: 14px; overflow: hidden;

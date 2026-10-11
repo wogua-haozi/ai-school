@@ -164,6 +164,16 @@ public class AdminUserController {
             m.put("status", u.getStatus());
             return m;
         }).toList();
+        // 批49 权限点标志批量回显（TeacherTab 两枚开关渲染免逐行 N+1；ADMIN 天生全权不落表恒 false）
+        Map<Long, Set<String>> permByUser = userPermissionMapper.selectList(new LambdaQueryWrapper<UserPermission>()
+                        .in(UserPermission::getUserId, p.getRecords().stream().map(User::getId).toList()))
+                .stream().collect(Collectors.groupingBy(UserPermission::getUserId,
+                        Collectors.mapping(UserPermission::getPermCode, Collectors.toSet())));
+        for (int i = 0; i < records.size(); i++) {
+            Set<String> codes = permByUser.getOrDefault(p.getRecords().get(i).getId(), Set.of());
+            records.get(i).put("adminAccess", codes.contains(PermissionService.PERM_ADMIN_ACCESS));
+            records.get(i).put("scoreAll", codes.contains(PermissionService.PERM_SCORE_ALL));
+        }
         // 内嵌待审批标记（批2-5）：pendingCreate=新号待启用；pendingUpgradeTo=升级审批中的目标角色
         Map<Long, RoleRequest> pendings = approvalService.pendingByUsers(
                 p.getRecords().stream().map(User::getId).toList());
@@ -425,7 +435,7 @@ public class AdminUserController {
         return ApiResponse.ok(Map.of("pendingApproval", false));
     }
 
-    /** 权限点查询（批1 唯一码 ADMIN_ACCESS；TeacherTab 领导行「管理员级权限」开关回显） */
+    /** 权限点查询（批1 ADMIN_ACCESS / 批49 SCORE_ALL；TeacherTab 权限开关回显） */
     @GetMapping("/user/{id}/perms")
     public ApiResponse<Map<String, Object>> userPerms(@PathVariable Long id) {
         checkAdmin();
@@ -439,7 +449,7 @@ public class AdminUserController {
         return ApiResponse.ok(Map.of("role", u.getRole(), "perms", perms));
     }
 
-    /** 授予/收回管理员级权限（仅领导账号可授；ADMIN 天生全权无需开关） */
+    /** 授予/收回权限点（批1 ADMIN_ACCESS 仅领导可授；批49 SCORE_ALL 全校成绩查看=教学角色可授；code 缺省 ADMIN_ACCESS 兼容老调用） */
     @PutMapping("/user/{id}/perm")
     public ApiResponse<Void> grantPerm(@PathVariable Long id, @Validated @RequestBody PermReq req) {
         checkAdmin();
@@ -447,23 +457,33 @@ public class AdminUserController {
         if (u == null) {
             throw new BizException(404, "账号不存在");
         }
-        if (!"LEADER".equals(u.getRole())) {
-            throw new BizException(400, "仅领导账号可授予管理员级权限");
+        String code = req.getCode() == null || req.getCode().isBlank()
+                ? PermissionService.PERM_ADMIN_ACCESS : req.getCode();
+        if (PermissionService.PERM_ADMIN_ACCESS.equals(code)) {
+            if (!"LEADER".equals(u.getRole())) {
+                throw new BizException(400, "仅领导账号可授予管理员级权限");
+            }
+        } else if (PermissionService.PERM_SCORE_ALL.equals(code)) {
+            if (!List.of("TEACHER", "HEAD_TEACHER", "LEADER", "DIRECTOR", "GRADE_LEADER").contains(u.getRole())) {
+                throw new BizException(400, "全校成绩查看权限仅教学角色可授予");
+            }
+        } else {
+            throw new BizException(400, "未知权限点: " + code);
         }
         if (Boolean.TRUE.equals(req.getGranted())) {
             if (userPermissionMapper.selectCount(new LambdaQueryWrapper<UserPermission>()
                     .eq(UserPermission::getUserId, id)
-                    .eq(UserPermission::getPermCode, PermissionService.PERM_ADMIN_ACCESS)) == 0) {
+                    .eq(UserPermission::getPermCode, code)) == 0) {
                 UserPermission p = new UserPermission();
                 p.setUserId(id);
-                p.setPermCode(PermissionService.PERM_ADMIN_ACCESS);
+                p.setPermCode(code);
                 p.setGrantedBy(AuthUtil.current().userId());
                 userPermissionMapper.insert(p);
             }
         } else {
             userPermissionMapper.delete(new LambdaQueryWrapper<UserPermission>()
                     .eq(UserPermission::getUserId, id)
-                    .eq(UserPermission::getPermCode, PermissionService.PERM_ADMIN_ACCESS));
+                    .eq(UserPermission::getPermCode, code));
         }
         return ApiResponse.ok();
     }
@@ -472,6 +492,7 @@ public class AdminUserController {
     public static class PermReq {
         @NotNull(message = "granted 不能为空")
         private Boolean granted;
+        private String code;
     }
 
     /** 重置密码（重置后该账号下次登录强制改密） */

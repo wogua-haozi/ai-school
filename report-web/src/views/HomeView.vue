@@ -106,10 +106,10 @@ const avatarChar = computed(() => auth.realName?.charAt(0) || '师')
    「班主任寄语/成长总结/综合素质」三入口共用 /final-eval（?tab= 预选段）；
    「教师档案/教师风采/教师足迹」三入口共用 /my-growth（?tab= 预选）；
    批32 口径：请假入口=班主任/生活老师/级长/学成中心主任/领导/管理员；
-   批39③ 成绩仅教学角色（生活老师/招采前端藏，后端硬校验兜底） */
+   批49 成绩口径：教师/班主任零入口（级长可录本年级、领导/教学处只读，后端硬校验兜底） */
 const sections = computed(() => {
   const leave = ['HEAD_TEACHER', 'GRADE_LEADER', 'DIRECTOR', 'DORM', 'LEADER', 'ADMIN', 'SECRETARY'].includes(auth.role)
-  const score = !['DORM', 'PROCUREMENT'].includes(auth.role)
+  const score = auth.scoreAccess
   return [
     { label: '成长记录', items: [
       { name: '微光时刻', icon: 'photograph', to: '/moment/new', bg: '#F97316' },
@@ -150,7 +150,7 @@ const sections = computed(() => {
     /* 批37 追加：管理员直达分区——校方自助上传的内容发布/素材库一步可达
        （?tab= 直达且自动展开所属分组）；系统管理从「校园事务」挪入 */
     ...(auth.role === 'ADMIN' ? [{ label: '学校管理', items: [
-      { name: '内容发布', icon: 'promotion-o', to: '/admin?tab=content', bg: '#A8232B' },
+      { name: '内容发布', icon: 'newspaper-o', to: '/admin?tab=content', bg: '#A8232B' },
       { name: '素材库', icon: 'photo-o', to: '/admin?tab=asset', bg: '#64748B' },
       { name: '系统管理', icon: 'setting-o', to: '/admin', bg: '#475569' },
     ] }] : []),

@@ -1,6 +1,6 @@
 <template>
   <div>
-    <h4>考试与录入窗口（教师端「成绩管理」建考试；关闭录入窗口后教师不可见、不可录，管理员/领导不受限）</h4>
+    <h4>考试与录入窗口（批49：成绩管理仅管理员/书记/级长可用；关闭录入窗口后级长不可录，管理员/书记不受限）</h4>
     <el-table :data="exams" size="small">
       <el-table-column prop="name" label="考试" min-width="160" />
       <el-table-column prop="termName" label="学期" width="150" />

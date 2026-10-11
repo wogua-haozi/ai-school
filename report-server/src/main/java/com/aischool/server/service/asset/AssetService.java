@@ -43,6 +43,8 @@ public class AssetService {
     public static final List<Spec> CATALOG = List.of(
             new Spec("campus-bg", "web", "首页主图", "教师/家长/领导首页与登录页背景照片", "jpg"),
             new Spec("campus-pano", "web", "班级页主图", "班级页顶部照片与「关于」页全景图", "jpg"),
+            // 批49②：登录卡片顶部正门照专门展示区（替换/换季可自助上传，不进 PDF 渲染覆盖目录）
+            new Spec("login-gate", "web", "登录页正门照", "登录卡片顶部学校正门照片横幅", "jpg"),
             new Spec("tex-a", "web", "纹理·课堂", "页面装饰底纹（课堂师生互动）", "jpg"),
             new Spec("tex-b", "web", "纹理·扬长课", "页面装饰底纹（扬长课程课堂）", "jpg"),
             new Spec("tex-c", "web", "纹理·美术室", "页面装饰底纹（美术室）", "jpg"),

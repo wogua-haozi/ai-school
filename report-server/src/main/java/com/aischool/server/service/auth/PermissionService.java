@@ -9,15 +9,19 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
+
 /**
  * 权限点（角色之外按人叠加授权，V10 t_user_permission）。
  * 批1 码表：ADMIN_ACCESS = 管理员级配置权（授予领导即开放管理端操作）。
+ * 批49 码表：SCORE_ALL = 全校成绩查看权（教学处主任/副主任按人授权；只读，录入权限另由 ScoreService 收紧）。
  */
 @Service
 @RequiredArgsConstructor
 public class PermissionService {
 
     public static final String PERM_ADMIN_ACCESS = "ADMIN_ACCESS";
+    public static final String PERM_SCORE_ALL = "SCORE_ALL";
 
     private final UserPermissionMapper userPermissionMapper;
 
@@ -40,6 +44,20 @@ public class PermissionService {
         if (!hasAdminAccess(AuthUtil.current())) {
             throw new BizException(403, message);
         }
+    }
+
+    /** 全校成绩查看权（批49）：教学处主任/副主任等按人授权，不占角色以免污染其他审批流 */
+    public boolean hasScoreAll(UserPrincipal user) {
+        return userPermissionMapper.selectCount(new LambdaQueryWrapper<UserPermission>()
+                .eq(UserPermission::getUserId, user.userId())
+                .eq(UserPermission::getPermCode, PERM_SCORE_ALL)) > 0;
+    }
+
+    /** 用户被授予的权限点码表（登录响应携带，前端门控用；ADMIN 角色天生全权不落表） */
+    public List<String> permsOf(Long userId) {
+        return userPermissionMapper.selectList(new LambdaQueryWrapper<UserPermission>()
+                        .eq(UserPermission::getUserId, userId))
+                .stream().map(UserPermission::getPermCode).toList();
     }
 
     /**

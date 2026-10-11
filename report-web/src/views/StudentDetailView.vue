@@ -100,6 +100,7 @@ import { api } from '../api/http'
 import MomentPhoto from '../components/MomentPhoto.vue'
 import PhotoPreview from '../components/PhotoPreview.vue'
 import { useAssetStore } from '../stores/asset'
+import { useAuthStore } from '../stores/auth'
 
 const asset = useAssetStore()
 const route = useRoute()
@@ -184,19 +185,21 @@ function previewMoments(cur: string) {
   photoPreview.value?.open(all.length ? all : [cur], Math.max(0, all.indexOf(cur)))
 }
 
-/* 入口配色（图4）：每格一色的实心圆角方底 + 白图标；noPre=目标页无按学生看数据的形态 */
-const entries = [
-  { name: '成绩', icon: 'bar-chart-o', to: '/scores', bg: '#3E7BFA' },
+/* 入口配色（图4）：每格一色的实心圆角方底 + 白图标；noPre=目标页无按学生看数据的形态；
+   批49：成绩格按成绩可见门过滤（教师/班主任零入口） */
+const auth = useAuthStore()
+const entries = computed(() => [
+  ...(auth.scoreAccess ? [{ name: '成绩', icon: 'bar-chart-o', to: '/scores', bg: '#3E7BFA' }] : []),
   { name: '素养评价', icon: 'edit', to: '/evaluate', bg: '#10B981' },
   { name: '活动', icon: 'flag-o', to: '/activity', bg: '#F43F5E', noPre: true },
   { name: '荣誉', icon: 'medal-o', to: '/honor', bg: '#EAB308' },
   { name: '期末评语', icon: 'edit-square', to: '/final-eval', bg: '#F59E0B' },
   { name: '成长银行', icon: 'gold-coin-o', to: '/bank', bg: '#C9A227' },
   { name: '时间轴', icon: 'clock-o', to: '/timeline', bg: '#6366F1' },
-]
+])
 
 /** 除「活动」外全部带该生预选（目标页 init 读 query 自动选中班级+学生） */
-function go(g: (typeof entries)[number]) {
+function go(g: { name: string; icon: string; to: string; bg: string; noPre?: boolean }) {
   const studentId = Number(route.params.id)
   if (!g.noPre && studentId && termId.value) {
     router.push({ path: g.to, query: { studentId: String(studentId), termId: String(termId.value) } })

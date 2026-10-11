@@ -71,3 +71,6 @@ local/perf-results/
 # 参考素材（IP 手册等授权未确认，公开仓库不放）
 参考/
 数据需求.docx
+
+# verify_m7 运行时数据库快照（每次跑脚本都会重写）
+report-server/scripts/_m7_snapshot.sql

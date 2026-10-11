@@ -180,14 +180,14 @@ public class LeaderController {
 
     /**
      * 全校成绩汇总（批4）：subjectId 空=总分模式，否则单科模式；rows 分页（默认 100）。
-     * 领导全量可见（方案A）；导出同口径全量。
+     * 批49 放开给成绩查看角色（管理员/书记/级长/校级领导/SCORE_ALL），角色门与数据域由 scoreSummary 收口；
+     * 导出同口径全量。
      */
     @GetMapping("/score-summary")
     public ApiResponse<Map<String, Object>> scoreSummary(@RequestParam Long examId,
                                                          @RequestParam(required = false) Long subjectId,
                                                          @RequestParam(defaultValue = "1") int page,
                                                          @RequestParam(defaultValue = "100") int size) {
-        checkLeader();
         return ApiResponse.ok(scoreService.scoreSummary(AuthUtil.current(), examId, subjectId,
                 Math.max(1, page), Math.min(Math.max(1, size), 200)));
     }
@@ -196,7 +196,6 @@ public class LeaderController {
     @GetMapping("/score-summary/export")
     public ResponseEntity<byte[]> scoreSummaryExport(@RequestParam Long examId,
                                                      @RequestParam(required = false) Long subjectId) {
-        checkLeader();
         Exported f = scoreService.exportSummary(AuthUtil.current(), examId, subjectId);
         String filename = URLEncoder.encode(f.filename(), StandardCharsets.UTF_8);
         return ResponseEntity.ok()

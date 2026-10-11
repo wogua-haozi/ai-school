@@ -7,12 +7,14 @@ import com.aischool.server.entity.Grid;
 import com.aischool.server.entity.Indicator;
 import com.aischool.server.entity.Subject;
 import com.aischool.server.entity.Term;
+import com.aischool.server.entity.User;
 import com.aischool.server.mapper.ClazzMapper;
 import com.aischool.server.mapper.GradeMapper;
 import com.aischool.server.mapper.GridMapper;
 import com.aischool.server.mapper.IndicatorMapper;
 import com.aischool.server.mapper.SubjectMapper;
 import com.aischool.server.mapper.TermMapper;
+import com.aischool.server.mapper.UserMapper;
 import com.aischool.server.security.AuthUtil;
 import com.aischool.server.service.auth.DataScopeService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -38,6 +40,7 @@ public class MetaController {
     private final GridMapper gridMapper;
     private final IndicatorMapper indicatorMapper;
     private final SubjectMapper subjectMapper;
+    private final UserMapper userMapper;
     private final DataScopeService dataScopeService;
 
     @GetMapping("/terms")
@@ -72,6 +75,16 @@ public class MetaController {
     public ApiResponse<List<Subject>> subjects() {
         return ApiResponse.ok(subjectMapper.selectList(
                 new LambdaQueryWrapper<Subject>().orderByAsc(Subject::getSort)));
+    }
+
+    /** 在职教职员下拉（批49① 采购验收人选择用）：非家长启用账号，仅 id+姓名，无敏感列 */
+    @GetMapping("/teachers")
+    public ApiResponse<List<Map<String, Object>>> teachers() {
+        return ApiResponse.ok(userMapper.selectList(new LambdaQueryWrapper<User>()
+                        .eq(User::getStatus, 1).ne(User::getRole, "PARENT")
+                        .orderByAsc(User::getRealName))
+                .stream().map(u -> Map.<String, Object>of("id", u.getId(), "realName", u.getRealName()))
+                .toList());
     }
 
     @GetMapping("/my-classes")

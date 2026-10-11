@@ -13,9 +13,11 @@
       <el-select v-if="subjects.length" v-model="subjectId" placeholder="学科" style="min-width: 140px" @change="load">
         <el-option v-for="s in subjects" :key="s.subjectId" :label="s.name" :value="s.subjectId" />
       </el-select>
-      <el-button type="primary" @click="examDialog = true">新建考试</el-button>
-      <!-- 批40e 撤回：管理员删误建考试（含其下全部成绩） -->
-      <el-button v-if="!teacherSide && examId" type="danger" plain @click="delExam">删除考试</el-button>
+      <!-- 批49：建考试=可传可改者（管理员/书记/级长）；汇总页=成绩可见角色（领导驾驶舱另有入口） -->
+      <el-button v-if="auth.scoreUpload" type="primary" @click="examDialog = true">新建考试</el-button>
+      <el-button v-if="auth.role !== 'LEADER'" @click="$router.push('/l/scores')">全校汇总</el-button>
+      <!-- 批40e 撤回：删误建考试（含其下全部成绩）；批49=管理员/书记 -->
+      <el-button v-if="['ADMIN', 'SECRETARY'].includes(auth.role) && examId" type="danger" plain @click="delExam">删除考试</el-button>
       <el-button v-if="classId" @click="downloadTemplate">下载模板</el-button>
       <el-button v-if="examId && subjectId && classId" @click="exportXlsx">导出 Excel</el-button>
       <el-button v-if="examId && subjectId && classId && editable" @click="importDialog = true">导入 Excel</el-button>
@@ -23,9 +25,7 @@
 
     <el-card v-if="rows.length">
       <template #header>
-        {{ teacherSide
-          ? `成绩单（满分 ${fullScore ?? '未设置'}）· 仅显示您本人录入的成绩，他人录入不可见`
-          : `成绩单（满分 ${fullScore ?? '未设置'}，保存后自动计算班级/年级排名；空白 = 未录入，清空分数后保存即删除）` }}
+        成绩单（满分 {{ fullScore ?? '未设置' }}，保存后自动计算班级/年级排名；空白 = 未录入，清空分数后保存即删除）
       </template>
       <el-table :data="rows" size="small" max-height="560" :row-class-name="rowClass">
         <el-table-column prop="studentNo" label="学号" min-width="110" align="center" />
@@ -37,20 +37,20 @@
             <span v-else>{{ row.score ?? '—' }}</span>
           </template>
         </el-table-column>
-        <el-table-column v-if="!teacherSide" label="班级名次" min-width="100" align="center">
+        <el-table-column label="班级名次" min-width="100" align="center">
           <template #default="{ row }">{{ row.classRank ?? '—' }}</template>
         </el-table-column>
-        <el-table-column v-if="!teacherSide" label="年级名次" min-width="100" align="center">
+        <el-table-column label="年级名次" min-width="100" align="center">
           <template #default="{ row }">{{ row.gradeRank ?? '—' }}</template>
         </el-table-column>
       </el-table>
       <div style="margin-top: 12px">
         <el-button type="primary" :disabled="!editable" :loading="saving" @click="save">批量保存</el-button>
-        <el-tag v-if="!editable" size="small" type="info">只读（本班班主任/该学科任课教师可编辑）</el-tag>
+        <el-tag v-if="!editable" size="small" type="info">只读（批49：仅管理员、书记、级长可录入）</el-tag>
       </div>
     </el-card>
     <el-empty v-else-if="loaded && examId && classId && !subjects.length"
-      description="该考试无您可操作的科目（或录入窗口已关闭）" />
+      description="该考试尚未配置科目" />
     <el-empty v-else-if="loaded" description="选择考试/班级/学科后加载成绩单" />
 
     <el-dialog v-model="examDialog" title="新建考试" width="560px">
@@ -98,7 +98,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, computed } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { motion } from 'motion-v'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -108,8 +108,8 @@ import { useAuthStore } from '../stores/auth'
 
 const route = useRoute()
 const auth = useAuthStore()
-/* 批4 方案A：教师侧（班主任同口径）仅见自己录入、名次列不开放 */
-const teacherSide = computed(() => auth.role === 'TEACHER' || auth.role === 'HEAD_TEACHER')
+/* 批49 甲方口径：教师/班主任零入口零权限；此处进入者均为成绩可见角色
+   （管理员/书记=可传可改，级长=绑定年级可传可改且受录入窗口约束，其余只读），editable 由后端下发 */
 
 /** 批40e 撤回：删除整场考试（管理员；含全部成绩，报告重新生成即对齐） */
 async function delExam() {

@@ -42,7 +42,16 @@
       <el-table-column label="管理权限" width="92">
         <template #default="{ row }">
           <el-tooltip v-if="row.role === 'LEADER'" content="开启后该领导可使用管理端全部功能（网页端操作）" placement="top">
-            <el-switch v-model="row.adminAccess" size="small" @change="(v: any) => toggleAdminAccess(row, v)" />
+            <el-switch v-model="row.adminAccess" size="small" @change="(v: any) => togglePerm(row, v, 'ADMIN_ACCESS')" />
+          </el-tooltip>
+          <span v-else>—</span>
+        </template>
+      </el-table-column>
+      <!-- 批49：全校成绩查看（SCORE_ALL 权限点）——教学处主任/副主任等按人授予，只读 -->
+      <el-table-column label="全校成绩" width="86">
+        <template #default="{ row }">
+          <el-tooltip v-if="canScoreAll(row)" content="开启后该账号可查看全校成绩汇总（只读，录入权限不受影响）" placement="top">
+            <el-switch v-model="row.scoreAll" size="small" @change="(v: any) => togglePerm(row, v, 'SCORE_ALL')" />
           </el-tooltip>
           <span v-else>—</span>
         </template>
@@ -254,6 +263,7 @@ async function loadUsers() {
   const qs = new URLSearchParams({ page: '1', size: '100' })
   if (roleFilter.value) qs.set('role', roleFilter.value)
   if (keyword.value.trim()) qs.set('keyword', keyword.value.trim())
+  // 批49：adminAccess/scoreAll 权限点标志由 user/list 批量下发（免逐行 N+1）
   const d = await api<{ records: any[] }>(`/api/admin/user/list?${qs}`)
   users.value = d.records
   await loadTeaches()
@@ -263,22 +273,22 @@ async function loadUsers() {
     const byUser = new Map(pfs.map((p) => [p.userId, p]))
     users.value = users.value.map((u) => ({ ...u, ...(byUser.get(u.id) ?? {}) }))
   } catch { /* 档案接口失败仅少几列 */ }
-  // 领导行回显「管理员级权限」开关（ADMIN_ACCESS 权限点，批1）
-  await Promise.all(users.value.filter((u) => u.role === 'LEADER').map(async (u) => {
-    try {
-      const d = await api<{ perms: string[] }>(`/api/admin/user/${u.id}/perms`)
-      u.adminAccess = d.perms.includes('ADMIN_ACCESS')
-    } catch { u.adminAccess = false }
-  }))
 }
 
-/** 领导按人升级管理员级权限（角色改回非领导时后端自动清权限点） */
-async function toggleAdminAccess(row: any, granted: boolean) {
+/** 批49 权限点开关列是否显示：SCORE_ALL 授予教学角色（管理员/书记/级长天生有成绩权不占开关） */
+function canScoreAll(row: any) {
+  return ['TEACHER', 'HEAD_TEACHER', 'LEADER', 'DIRECTOR', 'GRADE_LEADER'].includes(row.role)
+}
+
+/** 权限点授予/收回（批1 ADMIN_ACCESS 领导管理员级；批49 SCORE_ALL 全校成绩只读） */
+async function togglePerm(row: any, granted: boolean, code: string) {
+  const label = code === 'SCORE_ALL' ? '全校成绩查看' : '管理员级'
   try {
-    await api(`/api/admin/user/${row.id}/perm`, { method: 'PUT', json: { granted } })
-    ElMessage.success(granted ? '已授予管理员级权限' : '已收回管理员级权限')
+    await api(`/api/admin/user/${row.id}/perm`, { method: 'PUT', json: { granted, code } })
+    ElMessage.success(granted ? `已授予${label}权限` : `已收回${label}权限`)
   } catch (e) {
-    row.adminAccess = !granted // 失败回滚开关状态
+    if (code === 'SCORE_ALL') row.scoreAll = !granted // 失败回滚开关状态
+    else row.adminAccess = !granted
     throw e
   }
 }

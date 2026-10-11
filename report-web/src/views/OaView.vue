@@ -99,6 +99,9 @@
           <van-field :model-value="purExpectDate" is-link readonly label="期望交付" placeholder="选择日期（必选）"
             @click="openDate('expect')" />
           <van-field v-model="purPlace" label="交付地点" placeholder="例如：办公楼二楼教务处" />
+          <!-- 批49① 验收人：默认=申请人本人，提交时可改（第五级采购验收的办理人） -->
+          <van-field :model-value="acceptorLabel" is-link readonly label="验收人" placeholder="默认为本人"
+            @click="openAcceptors" />
           <!-- 附件（≤3 张，选图即传，同报修凭证模式） -->
           <div class="photo-row">
             <div v-for="(p, i) in purPhotos" :key="p.key" class="thumb">
@@ -176,6 +179,7 @@
             <div class="detail-cells">
               <p><span>期望交付</span><b>{{ detailJson.expectDate }}</b></p>
               <p><span>交付地点</span><b>{{ detailJson.place }}</b></p>
+              <p v-if="detail.acceptorNames?.length"><span>验收人</span><b>{{ detail.acceptorNames.join('、') }}</b></p>
               <p><span>事由</span><b>{{ detailJson.reason }}</b></p>
             </div>
             <div class="app-sec" style="margin: 14px 0 4px">采购明细（{{ (detailJson.items || []).length }} 项）</div>
@@ -251,6 +255,25 @@
         :min-date="minDate" :max-date="maxDate" @confirm="onDateOk" @cancel="dateOpen = false" />
     </van-popup>
 
+    <!-- 批49① 验收人选择：搜索+多选（同配置或签口径，任一人验收即过级）；不选=申请人本人 -->
+    <van-popup v-model:show="acceptorOpen" position="bottom" round :style="{ maxHeight: '72%' }" class="pop">
+      <div class="p-head">
+        <b>选择验收人</b>
+        <small>不选=本人验收；多选时任一人验收即通过（第五级）</small>
+      </div>
+      <div class="p-body">
+        <van-search v-model="acceptorKw" placeholder="搜索姓名" />
+        <div class="acc-list">
+          <div v-for="t in acceptorFiltered" :key="t.id" class="acc-row" @click="toggleAcceptor(t.id)">
+            <van-checkbox :model-value="acceptorIds.includes(t.id)" shape="square" @click.prevent="toggleAcceptor(t.id)" />
+            <span>{{ t.realName }}</span>
+          </div>
+          <p v-if="!acceptorFiltered.length" class="empty">无匹配人员</p>
+        </div>
+        <van-button round block type="primary" size="small" class="mini-btn" @click="acceptorOpen = false">确定</van-button>
+      </div>
+    </van-popup>
+
     <!-- 招采字典/入库/流水（批33；端点与管理端共用，招采已放行） -->
     <van-popup v-model:show="manageOpen" position="bottom" round :style="{ maxHeight: '88%' }" class="pop">
       <div class="p-head"><b>物资字典与库存</b><small>新增物资 · 入库登记 · 出入库流水</small></div>
@@ -308,6 +331,7 @@ interface OaDetail extends OaRow {
   photoUrls?: string[] // 批43① 采购附件
   stockMatches?: { item: string; name: string; stock: number; unit: string; location: string }[]
   ccNames?: string[]
+  acceptorNames?: string[] // 批49① 采购验收人
 }
 interface GoodsOpt { id: number; name: string; unit: string; stock: number; location: string }
 
@@ -354,6 +378,32 @@ const purPhotos = ref<{ key: string; url: string }[]>([])
 const purPhotoInput = ref<HTMLInputElement>()
 const newItems = ref<{ name: string; spec: string; qty: string; note: string }[]>([{ name: '', spec: '', qty: '', note: '' }])
 const purDetailUrls = ref<string[]>([])
+
+// 批49① 验收人（默认=申请人本人，提交时可改）
+const acceptorIds = ref<number[]>([])
+const acceptorOpen = ref(false)
+const acceptorKw = ref('')
+const staffList = ref<{ id: number; realName: string }[]>([])
+const acceptorLabel = computed(() => {
+  if (!acceptorIds.value.length) return '本人（默认）'
+  return acceptorIds.value.map((id) => staffList.value.find((t) => t.id === id)?.realName)
+    .filter(Boolean).join('、')
+})
+const acceptorFiltered = computed(() => {
+  const kw = acceptorKw.value.trim()
+  return kw ? staffList.value.filter((t) => t.realName.includes(kw)) : staffList.value
+})
+function openAcceptors() {
+  acceptorOpen.value = true
+  if (!staffList.value.length) {
+    api<{ id: number; realName: string }[]>('/api/meta/teachers').then((d) => (staffList.value = d)).catch(() => {})
+  }
+}
+function toggleAcceptor(id: number) {
+  const i = acceptorIds.value.indexOf(id)
+  if (i >= 0) acceptorIds.value.splice(i, 1)
+  else acceptorIds.value.push(id)
+}
 
 /** 附件选图即传（≤3 张，jpg/jpeg/png；提交时只带 objectName） */
 async function onPurPhoto(e: Event) {
@@ -435,6 +485,7 @@ function openNew(type: string) {
   purPhotos.value.forEach((p) => URL.revokeObjectURL(p.url))
   purPhotos.value = []
   newItems.value = [{ name: '', spec: '', qty: '', note: '' }]
+  acceptorIds.value = []
   if (type === 'GOODS' && !goods.value.length) {
     api<GoodsOpt[]>('/api/oa/goods').then((d) => (goods.value = d)).catch(() => {})
   }
@@ -492,6 +543,7 @@ async function doSubmit() {
           place: purPlace.value,
           photos: purPhotos.value.map((p) => p.key),
           items,
+          acceptorIds: acceptorIds.value, // 批49①：空=后端回退申请人本人
         },
       })
     } finally { submitting.value = false }
@@ -688,6 +740,13 @@ onMounted(load)
 .op { border: none; border-radius: 999px; padding: 3px 12px; font-size: 11px; }
 .op.copy { background: #EEF2FF; color: #4F46E5; }
 .op.del { background: #FDECEC; color: #EF4444; }
+
+/* 批49① 验收人选择弹层 */
+.acc-list { border: 1px solid var(--app-card-border); border-radius: 12px; margin-top: 8px;
+  max-height: 46vh; overflow-y: auto; }
+.acc-row { display: flex; align-items: center; gap: 10px; padding: 11px 14px; cursor: pointer; }
+.acc-row + .acc-row { border-top: 1px solid var(--app-card-border); }
+.acc-row span { font-size: 14px; color: var(--app-text-1); }
 
 /* 批43① 采购：详情明细/库存参考展示 */
 .p-items-view { border: 1px solid var(--app-card-border); border-radius: 12px; padding: 2px 12px; }

@@ -111,6 +111,37 @@ public class OaService {
         }
     }
 
+    /** 单据感知的审批人解析（待办/审批/详情/流转通知一律走此口径）：
+     *  批49①：采购第 5 级=该单验收人（detail.acceptorIds，默认申请人可改），配置值为兜底。 */
+    private List<Long> approverIds(OaForm form, int level) {
+        if (OaForm.TYPE_PURCHASE.equals(form.getFormType()) && level == 5) {
+            List<Long> ids = detailAcceptorIds(form);
+            if (!ids.isEmpty()) {
+                return ids;
+            }
+        }
+        return approverIds(form.getFormType(), level);
+    }
+
+    /** 采购单验收人（detail JSON acceptorIds；旧单/解析失败=空走配置兜底） */
+    private List<Long> detailAcceptorIds(OaForm form) {
+        try {
+            var node = JSON.readTree(form.getDetail()).get("acceptorIds");
+            if (node == null || !node.isArray()) {
+                return List.of();
+            }
+            List<Long> ids = new java.util.ArrayList<>();
+            node.forEach(n -> {
+                if (n.canConvertToLong()) {
+                    ids.add(n.longValue());
+                }
+            });
+            return ids;
+        } catch (Exception e) {
+            return List.of();
+        }
+    }
+
     /** 过滤出账号仍存在的审批人（被删账号配成审批人会让单据卡死在无人可审的级） */
     private List<Long> validUserIds(List<Long> ids) {
         return ids.isEmpty() ? ids
@@ -121,6 +152,9 @@ public class OaService {
     private void checkApproversConfigured(String formType) {
         int n = levels(formType);
         for (int i = 1; i <= n; i++) {
+            if (OaForm.TYPE_PURCHASE.equals(formType) && i == 5) {
+                continue; // 批49①：验收人=单据级（默认申请人，提交时可改），无需全局配置
+            }
             if (validUserIds(approverIds(formType, i)).isEmpty()) {
                 throw new BizException(400, "管理员尚未配齐「" + typeName(formType) + "」第 " + i
                         + " 级（" + nodeName(formType, i) + "）审批人，请联系管理员配置后再提交");
@@ -156,6 +190,7 @@ public class OaService {
         private String place; // 交付地点
         private List<String> photos; // 附件 objectName（先传 /purchase/photo 预上传拿 key）
         private List<PurchaseItem> items; // 采购明细（多组）
+        private List<Long> acceptorIds; // 批49①：采购验收人（默认=申请人，提交时可改）
     }
 
     @Data
@@ -261,6 +296,10 @@ public class OaService {
             detail.put("reason", req.getTitle().trim());
             detail.put("expectDate", req.getExpectDate());
             detail.put("place", req.getPlace().trim());
+            // 批49①：验收人默认=申请人本人，提交时可改（甲方口径）；空/未传即回退默认
+            List<Long> acceptors = req.getAcceptorIds() == null ? List.<Long>of()
+                    : req.getAcceptorIds().stream().filter(java.util.Objects::nonNull).distinct().toList();
+            detail.put("acceptorIds", acceptors.isEmpty() ? List.of(user.userId()) : acceptors);
             detail.put("photos", req.getPhotos() == null ? List.of() : req.getPhotos());
             detail.put("items", items.stream()
                     .filter(it -> it.getName() != null && !it.getName().isBlank())
@@ -338,7 +377,7 @@ public class OaService {
         List<OaForm> all = formMapper.selectList(new LambdaQueryWrapper<OaForm>()
                 .eq(OaForm::getStatus, OaForm.PENDING));
         List<OaForm> mine = all.stream()
-                .filter(f -> approverIds(f.getFormType(), f.getCurrentLevel()).contains(uid))
+                .filter(f -> approverIds(f, f.getCurrentLevel()).contains(uid))
                 .collect(Collectors.toList());
         return toRows(mine);
     }
@@ -384,6 +423,14 @@ public class OaService {
                 }
             }
             out.put("photoUrls", photoUrls);
+            // 批49① 验收人姓名回显（详情页展示用；旧单无 acceptorIds 不下发）
+            List<Long> acc = detailAcceptorIds(form);
+            if (!acc.isEmpty()) {
+                Map<Long, String> nm = userMapper.selectBatchIds(acc).stream()
+                        .collect(Collectors.toMap(User::getId, User::getRealName, (a, b) -> a));
+                out.put("acceptorNames", acc.stream().map(accId -> nm.getOrDefault(accId, ""))
+                        .filter(s -> !s.isBlank()).toList());
+            }
             List<Map<String, Object>> matches = new ArrayList<>();
             if (d.get("items") instanceof List<?> items) {
                 for (Object o : items) {
@@ -418,7 +465,7 @@ public class OaService {
         }
         boolean applicant = form.getApplicantId().equals(user.userId());
         boolean approver = form.getStatus().equals(OaForm.PENDING)
-                && approverIds(form.getFormType(), form.getCurrentLevel()).contains(user.userId());
+                && approverIds(form, form.getCurrentLevel()).contains(user.userId());
         boolean procurement = OaForm.TYPE_GOODS.equals(form.getFormType())
                 && "PROCUREMENT".equals(user.role());
         return applicant || approver || procurement;
@@ -452,7 +499,7 @@ public class OaService {
         if (!form.getStatus().equals(OaForm.PENDING)) {
             throw new BizException(400, "单据已流转结束");
         }
-        List<Long> approvers = approverIds(form.getFormType(), form.getCurrentLevel());
+        List<Long> approvers = approverIds(form, form.getCurrentLevel());
         boolean currentApprover = approvers.contains(user.userId());
         if (!admin && !currentApprover) {
             throw new BizException(403, "当前节点由「" + nodeName(form.getFormType(), form.getCurrentLevel()) + "」审批人处理");
@@ -480,7 +527,7 @@ public class OaService {
             form.setCurrentLevel(form.getCurrentLevel() + 1);
             formMapper.updateById(form);
             // 批29：流转到下一级，通知下一级审批人；批43① 或签=逐人通知、群合并一条
-            List<Long> next = validUserIds(approverIds(form.getFormType(), form.getCurrentLevel()));
+            List<Long> next = validUserIds(approverIds(form, form.getCurrentLevel()));
             if (!next.isEmpty()) {
                 notificationService.oaTodoAny(next, typeName(form.getFormType()), form.getTitle(), form.getId(), user.realName());
             }
