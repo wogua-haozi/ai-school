@@ -59,7 +59,7 @@
     </el-table>
 
     <!-- 自动排名（区间聚合） -->
-    <h4 style="margin-top: 22px">区间排名（自动汇总：检查日×120 + 素养评价分 + 班级记分）</h4>
+    <h4 style="margin-top: 22px">区间排名（自动汇总：检查日×120 + 班级记分；批50 起学生评价分不计入，仅算检查日）</h4>
     <div class="bar">
       <el-date-picker v-model="rFrom" type="date" style="width: 160px" value-format="YYYY-MM-DD" @change="loadRank" />
       <span>至</span>

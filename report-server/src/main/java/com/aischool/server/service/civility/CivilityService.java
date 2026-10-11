@@ -47,11 +47,13 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * 文明班评比（批30 B 案 → 批39⑥ 数据源合并 → 批43 三分源）：
+ * 文明班评比（批30 B 案 → 批39⑥ 数据源合并 → 批43 三分源 → 批50 摘评价分）：
  * 旧口径=教师按德育规范 12 项打分（扣分/特殊加减），当日分=基础 120+当日合计；
- * 批39⑥ 起打分入口下线，切换日（t_sys_config.civility_eval_from）起新口径=素养评价分直加
- * （1 评价分=1 文明班分，正负都累加）；批43 再并入「班级整体加减分」（t_class_score，
- * 不落具体学生的班级层面记分）——检查日=该班有评价记录或班级记分的日期（当日基础 120）。
+ * 批39⑥ 起打分入口下线，切换日（t_sys_config.civility_eval_from）起新口径；
+ * 批43 并入「班级整体加减分」（t_class_score，不落具体学生的班级层面记分）；
+ * 批50 起学生评价分不再直加班级总分（个人成长数据不连坐班级），评价记录仅保留
+ * 「德育检查痕迹」身份——检查日=该班有评价记录或班级记分的日期（当日基础 120），
+ * 新段总分=检查日×120+Σ班级记分。
  * 新旧不混算：跨切换日的区间按切换日切分，两段各自口径加总；切换日前的历史打分保留进排名。
  * 排名按 [from,to] 区间自动聚合；批46③ 起评选=按周冻结排名快照（自然周周一~周日，
  * rank 1-3 即文明班金银铜，周期标签如 2026-W41），每周一自动评选上周，管理端可手动重评；
@@ -97,9 +99,9 @@ public class CivilityService {
         private String note;
     }
 
-    /** 打分录入（批39⑥ 已下线：数据源并入素养评价，仅保留历史记录查询/删除） */
+    /** 打分录入（批39⑥ 已下线、批50 起班级分只看记分：仅保留历史记录查询/删除） */
     public Map<String, Object> create(ScoreReq req) {
-        throw new BizException(403, "文明班打分已并入素养评价：请到「素养评价」给学生记录，班级分自动汇总");
+        throw new BizException(403, "文明班打分入口已下线：班级层面加减分请到「素养评价 → 班级记分」录入");
     }
 
     /** 打分记录（classId/dateFrom/dateTo 可选筛选，近 200 条；批39⑥ 起仅供历史查询） */
@@ -307,10 +309,11 @@ public class CivilityService {
     }
 
     /**
-     * 自动汇总排名（[from,to] 含两端，批39⑥ 双口径）：
+     * 自动汇总排名（[from,to] 含两端，批39⑥ 双口径 + 批50 摘评价分）：
      * 切换日前=旧打分口径（全校有打分记录的日子算检查日，当天未被打分的班保底 120；
      * 班级段内分=该段全部 delta×cnt 合计，含扣分）；
-     * 切换日起=新评价口径（该班有评价记录的日期算检查日，基础 120/日；评价分正负都直加）。
+     * 切换日起=检查日×120+Σ班级记分（批50：学生评价不再直加班级总分，评价记录
+     * 仅与班级记分一起标记「当日有德育检查」——检查日=有评价或记分记录的日期）。
      * 两段各自聚合后加总（新旧不混算），按年级分组返回名次。
      */
     public Map<String, Object> rank(LocalDate from, LocalDate to, Long gradeId) {
@@ -330,9 +333,9 @@ public class CivilityService {
         Map<Long, BigDecimal> classDelta = rows.stream().collect(Collectors.toMap(CivilityScore::getClassId,
                 r -> r.getDelta().multiply(BigDecimal.valueOf(r.getCnt())), BigDecimal::add));
 
-        // 新段评价聚合：学生→班级映射限定目标年级（gradeId 空=全校），避免全量评价扫描
+        // 新段评价聚合：学生→班级映射限定目标年级（gradeId 空=全校），避免全量评价扫描；
+        // 批50 起只取评价日期作检查痕迹，评价分不进班级总分
         List<Clazz> classes = clazzMapper.selectList(null);
-        Map<Long, BigDecimal> classEvalScore = new LinkedHashMap<>();
         Map<Long, Set<LocalDate>> classEvalDays = new LinkedHashMap<>();
         Map<Long, BigDecimal> classOwnScore = new LinkedHashMap<>();
         Map<Long, Set<LocalDate>> classOwnDays = new LinkedHashMap<>();
@@ -351,7 +354,6 @@ public class CivilityService {
                         .ge(Evaluation::getEvalTime, newFrom.atStartOfDay())
                         .le(Evaluation::getEvalTime, to.atTime(LocalTime.MAX)))) {
                     Long cid = stuClass.get(ev.getStudentId());
-                    classEvalScore.merge(cid, ev.getScore(), BigDecimal::add);
                     classEvalDays.computeIfAbsent(cid, k -> new LinkedHashSet<>()).add(ev.getEvalTime().toLocalDate());
                 }
             }
@@ -387,7 +389,6 @@ public class CivilityService {
                                 BigDecimal total = BigDecimal.valueOf(CivilityScore.DAILY_BASE)
                                         .multiply(BigDecimal.valueOf((long) checkDaysOld.size() + evalDays))
                                         .add(classDelta.getOrDefault(c.getId(), BigDecimal.ZERO))
-                                        .add(classEvalScore.getOrDefault(c.getId(), BigDecimal.ZERO))
                                         .add(classOwnScore.getOrDefault(c.getId(), BigDecimal.ZERO));
                                 m.put("checkDays", checkDaysOld.size() + evalDays);
                                 m.put("totalScore", total);
