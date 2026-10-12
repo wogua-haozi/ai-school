@@ -15,12 +15,12 @@
 
     <!-- 卡片流（图2 样式） -->
     <div v-if="!loaded" class="cards">
-      <div v-for="i in 2" :key="i" class="app-card tex-c card">
+      <div v-for="i in 2" :key="i" class="app-card card" :class="tex(i)">
         <van-skeleton title :row="3" class="card-skeleton" />
       </div>
     </div>
     <div v-else-if="filtered.length" class="cards">
-      <div v-for="(f, i) in filtered" :key="i" class="app-card tex-c card"
+      <div v-for="(f, i) in filtered" :key="i" class="app-card card" :class="tex(i)"
         @click="f.studentId && $router.push(`/student/${f.studentId}`)">
         <div class="c-head">
           <span class="c-title">{{ cardTitle(f) }}</span>
@@ -37,7 +37,7 @@
         </div>
       </div>
     </div>
-    <div v-else class="app-card tex-e empty">
+    <div v-else class="app-card tex-13 empty">
       <van-empty image-size="88" description="该分类下还没有记录" />
     </div>
 
@@ -51,6 +51,10 @@
 import { computed, onMounted, ref } from 'vue'
 import { api } from '../api/http'
 import { fullTime } from '../utils/fmt'
+import { texAt } from '../utils/tex'
+
+// 批52③ 37 槽轮换池：本页基准 12、静态位 1，骨架/列表轮换续在 13
+const tex = (i: number) => texAt(13 + i)
 import MomentPhoto from '../components/MomentPhoto.vue'
 import PhotoPreview from '../components/PhotoPreview.vue'
 

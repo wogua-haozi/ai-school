@@ -1,7 +1,7 @@
 <template>
   <div class="app-page thlist" :class="{ tall: filtered.length }">
     <!-- 教师筛选条（金色荣誉主题，同微光列表顶卡） -->
-    <div class="app-card tl gold tex-d top">
+    <div class="app-card tl gold tex-27 top">
       <div class="chips">
         <button class="chip" :class="{ on: teacherId === undefined }" type="button"
           @click="teacherId = undefined">全部<span class="cnt">{{ honors.length }}</span></button>

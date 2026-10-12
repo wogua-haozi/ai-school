@@ -76,10 +76,9 @@ public class MomentService {
         if (studentIds == null || studentIds.isEmpty()) {
             throw new BizException(400, "请选择至少一名学生");
         }
-        // 班级可操作 + 学生都属于该班
-        if (!"ADMIN".equals(user.role())) {
-            dataScope.checkClassOperable(user, classId);
-        }
+        // 批54① 微光开放全体老师：任课∪班主任∪年级绑定（与班级下拉同源口径）；家长仍拒
+        rejectParent(user);
+        dataScope.checkClassTeachable(user, classId);
         List<Student> students = studentMapper.selectBatchIds(studentIds);
         if (students.size() != studentIds.size()
                 || students.stream().anyMatch(s -> !classId.equals(s.getClassId()))) {

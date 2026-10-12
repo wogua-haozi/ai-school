@@ -11,9 +11,9 @@
 
     <!-- 批42 分期归档：按学期分组列往期报告（每期只显最新版；期中/期末分列） -->
     <template v-else-if="groups.length">
-      <div v-for="g in groups" :key="g.termId" class="term">
+      <div v-for="(g, gi) in groups" :key="g.termId" class="term">
         <div class="app-sec">{{ g.termName || '往期' }}</div>
-        <div v-for="it in g.items" :key="it.reportId" class="app-card tl tex-a r-card">
+        <div v-for="(it, k) in g.items" :key="it.reportId" class="app-card tl r-card" :class="tex(gi * 8 + k)">
           <span class="r-icon"><van-icon name="description" /></span>
           <div class="r-info">
             <h1>{{ titleOf(it.scopeType, it.period) }}</h1>
@@ -46,6 +46,10 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { showToast } from 'vant'
 import { api, fetchBlob } from '../../api/http'
 import { isNative, openFile } from '../../api/nativeShare'
+import { texAt } from '../../utils/tex'
+
+// 批52③ 37 槽轮换池：本页基准 31（内层序=外层序×8+内层序，避免跨学期同页撞图）
+const tex = (i: number) => texAt(31 + i)
 
 interface Kid { studentId: number; name: string }
 interface ReportItem { reportId: number; scopeType: string; period: string; genTime?: string }

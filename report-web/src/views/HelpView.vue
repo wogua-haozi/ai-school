@@ -3,7 +3,7 @@
        完整操作细节仍以《使用手册》PDF（管理端分发）为准 -->
   <div class="app-page help">
     <div class="app-sec">{{ isParent ? '家长端' : '教师端' }} · 常见问题</div>
-    <div class="app-card tex-b faq">
+    <div class="app-card tex-25 faq">
       <van-collapse v-model="active">
         <van-collapse-item v-for="(f, i) in faqs" :key="i" :title="f.q" :name="String(i)">
           <p class="ans">{{ f.a }}</p>
@@ -12,7 +12,7 @@
     </div>
 
     <div class="app-sec">遇到问题</div>
-    <div class="app-card tex-e tip">
+    <div class="app-card tex-26 tip">
       <p>可在「我的 → 意见反馈」提交问题，或联系学校管理员处理；忘记密码请联系管理员（家长联系班主任）重置。</p>
     </div>
     <p class="app-foot">石实实验学校 · 石实SHINE</p>

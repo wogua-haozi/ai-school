@@ -2,7 +2,7 @@
   <div class="app-page bank">
     <!-- 选学生：点击弹双列联动选择（班级/学生） -->
     <div class="app-sec">成长银行</div>
-    <div class="app-card tl tex-a picker-card" @click="showPicker = true">
+    <div class="app-card tl tex-24 picker-card" @click="showPicker = true">
       <span class="ava" :class="{ has: student }" :style="student ? { background: avaColor(student.name) } : {}">
         {{ student ? student.name.charAt(0) : '?' }}
       </span>
@@ -16,13 +16,13 @@
     <template v-if="student">
       <!-- 双账本：操行分 / 扬长币 -->
       <div class="wallet">
-        <div class="app-card tex-e w-cell conduct">
+        <div class="app-card tex-25 w-cell conduct">
           <p class="w-label">操行分 · <b :class="'g-' + conduct.grade">{{ conduct.grade }} 级</b></p>
           <strong>{{ conduct.balance }}</strong>
           <span class="w-sub">基础 {{ conduct.rule?.baseScore }} · A≥{{ conduct.rule?.gradeAMin }} B≥{{ conduct.rule?.gradeBMin }} C≥{{ conduct.rule?.gradeCMin }}</span>
           <van-button size="small" plain color="#A8232B" class="w-btn" @click="openAdjust">手动调整</van-button>
         </div>
-        <div class="app-card tex-d w-cell coin">
+        <div class="app-card tex-26 w-cell coin">
           <p class="w-label">扬长币 · 可用</p>
           <strong class="c-gold">{{ coin.currentCoin }}</strong>
           <span class="w-sub">累计获得 {{ coin.totalCoin }}</span>
@@ -32,7 +32,7 @@
 
       <!-- 操行流水 -->
       <div class="app-sec">操行分流水</div>
-      <div class="app-card tex-c logs">
+      <div class="app-card tex-27 logs">
         <div v-if="!conduct.logs.length" class="empty">本学期暂无流水<span>基础分 {{ conduct.rule?.baseScore }} 起步</span></div>
         <div v-for="l in conduct.logs" :key="l.id" class="log">
           <div class="l-main">
@@ -45,7 +45,7 @@
 
       <!-- 货架兑换（教师录入） -->
       <div class="app-sec" ref="shelfRef">货架兑换</div>
-      <div class="app-card tex-b shelf">
+      <div class="app-card tex-28 shelf">
         <div v-if="!items.length" class="empty">货架暂无商品<span>管理员可在系统管理-成长银行上架</span></div>
         <div v-for="it in items" :key="it.id" class="item">
           <div class="i-main">
@@ -62,7 +62,7 @@
 
       <!-- 最近兑换（批30：待领取可核销=领取二次确认） -->
       <div v-if="coin.recentExpenses?.length" class="app-sec">最近兑换</div>
-      <div v-if="coin.recentExpenses?.length" class="app-card tex-f logs">
+      <div v-if="coin.recentExpenses?.length" class="app-card tex-29 logs">
         <div v-for="e in coin.recentExpenses" :key="e.id" class="log">
           <div class="l-main">
             <b>{{ e.item }}

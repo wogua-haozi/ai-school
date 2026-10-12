@@ -1,7 +1,7 @@
 <template>
   <div class="app-page">
     <!-- 孩子概要（批14 生命周期档案：在校全期沉淀） -->
-    <div class="app-card tl tex-a kid-card">
+    <div class="app-card tl tex-02 kid-card">
       <div class="avatar">{{ full?.student.name?.charAt(0) ?? '?' }}</div>
       <div class="info">
         <h1>成长档案</h1>
@@ -13,7 +13,7 @@
     <!-- 总览统计：五格 -->
     <div class="app-sec">在校总览</div>
     <div class="stats">
-      <div v-for="s in statCells" :key="s.label" class="app-card tex-b s-cell" :class="s.cls">
+      <div v-for="(s, i) in statCells" :key="s.label" class="app-card s-cell" :class="[s.cls, tex(i)]">
         <strong>{{ s.value }}</strong>
         <span>{{ s.label }}</span>
       </div>
@@ -41,6 +41,10 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { api } from '../../api/http'
+import { texAt } from '../../utils/tex'
+
+// 批52③ 37 槽轮换池：本页基准 10、静态位 1，统计卡轮换续在 11
+const tex = (i: number) => texAt(11 + i)
 
 const route = useRoute()
 

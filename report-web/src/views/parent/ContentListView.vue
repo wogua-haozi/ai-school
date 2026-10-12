@@ -30,6 +30,7 @@ import { onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { api, fetchBlob } from '../../api/http'
 import { useAuthStore } from '../../stores/auth'
+import { texAt } from '../../utils/tex'
 
 /* 通知公告列表页（批40a 内容型扬长课程下线，type 恒 NOTICE）；
    批37 教师端入口同组件双轨：家长走 /api/parent（含班级范围），其他角色走 /api/content/notices（全校范围）；
@@ -49,9 +50,8 @@ const loading = ref(true)
 const refreshing = ref(false)
 const coverCache = reactive<Record<number, string>>({})
 
-function tex(i: number) {
-  return ['tex-a', 'tex-b', 'tex-c', 'tex-e', 'tex-f', 'tex-g'][i % 6]
-}
+// 批52③ 37 槽轮换池：本页基准 7（无静态位，轮换从基准起）
+const tex = (i: number) => texAt(7 + i)
 function fmtDate(t?: string | null) {
   return t ? t.slice(0, 10) : ''
 }

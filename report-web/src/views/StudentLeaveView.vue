@@ -1,7 +1,7 @@
 <template>
   <div class="app-page leave">
     <!-- 状态筛选 + 范围切换（主任/领导/管理员可看全校）+ 登记入口（批32：教师代录） -->
-    <div class="app-card tex-b filters">
+    <div class="app-card tex-15 filters">
       <div class="f-row">
         <button v-for="t in tabs" :key="t.key" type="button" class="f-chip"
           :class="{ on: status === t.key }" @click="status = t.key">{{ t.label }}</button>

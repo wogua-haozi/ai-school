@@ -1,23 +1,30 @@
 <template>
   <div>
-    <h4>OA 审批（公章使用申请=固定三级审批；物资申领=级数可配。审批人配齐后教师端才能提交；管理员可代审任意节点）</h4>
+    <h4>OA 审批（公章=三级：一级审批人由申请人在行政候选名单内自选（或签，任一人通过即过级）→二级→三级；物资/场地=级数可配。审批人配齐后教师端才能提交；管理员可代审任意节点）</h4>
 
     <!-- 审批人配置 -->
     <div class="cfg">
-      <div class="cfg-row">
-        <span class="lbl">公章审批</span>
-        <span class="lv">一级</span>
-        <el-select v-model="seal[0]" filterable clearable placeholder="选择审批人" style="width: 160px">
-          <el-option v-for="t in teachers" :key="t.id" :label="t.realName" :value="t.id" />
-        </el-select>
-        <span class="lv">二级</span>
-        <el-select v-model="seal[1]" filterable clearable placeholder="选择审批人" style="width: 160px">
-          <el-option v-for="t in teachers" :key="t.id" :label="t.realName" :value="t.id" />
-        </el-select>
-        <span class="lv">三级</span>
-        <el-select v-model="seal[2]" filterable clearable placeholder="选择审批人" style="width: 160px">
-          <el-option v-for="t in teachers" :key="t.id" :label="t.realName" :value="t.id" />
-        </el-select>
+      <!-- 批52① 公章：一级=行政候选池（多人）、二级/三级每级多人或签，逐级竖排 -->
+      <div class="cfg-row seal-cfg">
+        <span class="lbl">公章审批（三级）</span>
+        <div class="lv-box">
+          <span class="lv">一级候选（行政人员）</span>
+          <el-select v-model="seal[0]" multiple filterable clearable placeholder="行政候选名单（可多人，申请人从中自选）" style="width: 240px">
+            <el-option v-for="t in teachers" :key="t.id" :label="t.realName" :value="t.id" />
+          </el-select>
+        </div>
+        <div class="lv-box">
+          <span class="lv">二级（或签）</span>
+          <el-select v-model="seal[1]" multiple filterable clearable placeholder="选择审批人（可多人）" style="width: 240px">
+            <el-option v-for="t in teachers" :key="t.id" :label="t.realName" :value="t.id" />
+          </el-select>
+        </div>
+        <div class="lv-box">
+          <span class="lv">三级（终审）</span>
+          <el-select v-model="seal[2]" multiple filterable clearable placeholder="选择审批人（可多人）" style="width: 240px">
+            <el-option v-for="t in teachers" :key="t.id" :label="t.realName" :value="t.id" />
+          </el-select>
+        </div>
       </div>
       <div class="cfg-row">
         <span class="lbl">物资审批</span>
@@ -118,7 +125,7 @@
           </template>
           <template v-if="detail.formType === 'VENUE'">
             <el-descriptions-item label="场地">{{ detailJson.venueName }}</el-descriptions-item>
-            <el-descriptions-item label="使用日期">{{ detailJson.useDate }}</el-descriptions-item>
+            <el-descriptions-item label="使用日期">{{ detailJson.useDate }}<template v-if="detailJson.startTime"> {{ detailJson.startTime }}-{{ detailJson.endTime }}</template></el-descriptions-item>
             <el-descriptions-item label="事由">{{ detailJson.reason }}</el-descriptions-item>
           </template>
           <!-- 批43① 采购：基础信息+明细+附件数+库存参考+抄送人 -->
@@ -168,7 +175,8 @@ import { ElMessage } from 'element-plus'
 import { api } from '../../api/http'
 
 const teachers = ref<any[]>([])
-const seal = ref<(number | undefined)[]>([undefined, undefined, undefined])
+// 批52① 公章三级全部多人（一级=行政候选池；二级/三级或签）
+const seal = ref<number[][]>([[], [], []])
 const goods = ref<(number | undefined)[]>([undefined, undefined, undefined])
 const venue = ref<(number | undefined)[]>([undefined, undefined, undefined])
 const goodsLevels = ref(1)
@@ -192,8 +200,8 @@ const detailJson = computed<any>(() => {
 const detailLines = computed(() => (detail.value?.formType === 'GOODS' ? detailJson.value : []))
 
 async function loadCfg() {
-  const c = await api<{ sealApprovers: ({ id: number; name: string } | null)[]; goodsApprovers: ({ id: number; name: string } | null)[]; venueApprovers: ({ id: number; name: string } | null)[]; goodsLevels: number; venueLevels: number; purchaseApprovers: { id: number; name: string }[][]; purchaseCc: { id: number; name: string }[] }>('/api/admin/oa/config')
-  seal.value = (c.sealApprovers || []).map((x) => x?.id)
+  const c = await api<{ sealApprovers: { id: number; name: string }[][]; goodsApprovers: ({ id: number; name: string } | null)[]; venueApprovers: ({ id: number; name: string } | null)[]; goodsLevels: number; venueLevels: number; purchaseApprovers: { id: number; name: string }[][]; purchaseCc: { id: number; name: string }[] }>('/api/admin/oa/config')
+  seal.value = [0, 1, 2].map((i) => (c.sealApprovers?.[i] ?? []).map((x) => x.id))
   goods.value = (c.goodsApprovers || []).map((x) => x?.id)
   venue.value = (c.venueApprovers || []).map((x) => x?.id)
   goodsLevels.value = c.goodsLevels || 1
@@ -203,7 +211,7 @@ async function loadCfg() {
 }
 
 async function saveCfg() {
-  if (seal.value.some((v) => !v)) { ElMessage.warning('公章三级审批人须配齐'); return }
+  if (seal.value.some((lv) => !lv.length)) { ElMessage.warning('公章三级须每级至少配一人（一级=行政候选名单）'); return }
   if (goods.value.slice(0, goodsLevels.value).some((v) => !v)) { ElMessage.warning('物资审批人须按级数配齐'); return }
   if (venue.value.slice(0, venueLevels.value).some((v) => !v)) { ElMessage.warning('场地审批人须按级数配齐'); return }
   if (purchase.value.some((lv) => !lv.length)) { ElMessage.warning('采购五级审批人须每级至少配一人'); return }
@@ -272,8 +280,8 @@ onMounted(async () => {
 .cfg-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 6px 0; }
 .lbl { font-size: 13px; color: #606266; font-weight: 600; }
 .lv { font-size: 12px; color: #909399; }
-/* 批43① 采购五级+抄送（多人或签，逐级竖排避免挤成一行） */
-.purchase-cfg { flex-direction: column; align-items: stretch; border-top: 1px dashed #e8ecf5; padding-top: 10px; }
+/* 批43① 采购五级+抄送 / 批52① 公章三级（多人或签，逐级竖排避免挤成一行） */
+.purchase-cfg, .seal-cfg { flex-direction: column; align-items: stretch; border-top: 1px dashed #e8ecf5; padding-top: 10px; }
 .purchase-cfg .lbl { flex: none; }
 .lv-box { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
 .lv-box .lv { flex: none; width: 120px; text-align: right; }

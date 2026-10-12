@@ -27,7 +27,7 @@
     </div>
 
     <!-- 本周微光：班级最近随手拍（横滑照片带；空态给拍照引导） -->
-    <div class="app-card overlap tl gold tex-d moments">
+    <div class="app-card overlap tl gold tex-04 moments">
       <div class="mo-head">
         <div class="app-sec mo-title" style="margin: 0"
           @click="$router.push({ path: '/moment', query: { classId: String(classId ?? '') } })">
@@ -51,7 +51,7 @@
     </div>
 
     <!-- 学生卡片列表（图书馆长廊底纹；微光卡恒在流内——空态也有引导按钮，列表永不上叠） -->
-    <div v-if="students.length" class="app-card tl tex-g list">
+    <div v-if="students.length" class="app-card tl tex-05 list">
       <div v-for="s in students" :key="s.id" class="stu" @click="$router.push(`/student/${s.id}`)">
         <span class="ava" :style="{ background: avaColor(s.name) }">{{ s.name.charAt(0) }}</span>
         <div class="stu-info">

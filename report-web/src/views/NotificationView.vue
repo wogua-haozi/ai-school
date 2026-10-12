@@ -1,7 +1,7 @@
 <template>
   <div class="app-page notify">
     <!-- 筛选 + 全部已读 -->
-    <div class="app-card tl tex-a bar">
+    <div class="app-card tl tex-03 bar">
       <div class="chips">
         <button v-for="c in [{k:'unread',t:`未读${unread ? '(' + unread + ')' : ''}`},{k:'all',t:'全部'}]"
           :key="c.k" class="chip" :class="{ on: filter === c.k }" type="button" @click="switchFilter(c.k)">{{ c.t }}</button>
@@ -10,7 +10,7 @@
     </div>
 
     <!-- 通知列表：点击已读+按 link 直达处理页 -->
-    <div class="app-card tex-e list">
+    <div class="app-card tex-04 list">
       <van-empty v-if="!rows.length" image-size="72" description="暂无通知" />
       <div v-for="n in rows" :key="n.id" class="nt" :class="{ unread: !n.read }" @click="open(n)">
         <div class="nt-head">

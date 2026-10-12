@@ -23,7 +23,7 @@
     </div>
 
     <!-- 全校规模（上浮统计卡，同教师端首页统计卡结构） -->
-    <div class="app-card overlap tl tex-a stats">
+    <div class="app-card overlap tl tex-30 stats">
       <div class="stat"><b>{{ ov.studentCount ?? '—' }}</b><span>在读学生</span></div>
       <div class="stat"><b>{{ ov.teacherCount ?? '—' }}</b><span>教职工</span></div>
       <div class="stat"><b>{{ ov.classCount ?? '—' }}</b><span>班级</span></div>
@@ -31,7 +31,7 @@
 
     <!-- 快捷功能宫格（同教师端形态）：成绩查询 LEADER 只读复用；教师使用情况批2；成绩汇总批3 -->
     <div class="app-sec">快捷功能</div>
-    <div class="app-card tex-b grid-card">
+    <div class="app-card tex-31 grid-card">
       <div class="grid">
         <button v-for="g in grids" :key="g.name" class="g-item" type="button"
           :class="{ off: !g.to }" @click="g.to ? $router.push(g.to) : showToast('该功能即将开放')">
@@ -46,7 +46,7 @@
 
     <!-- 今日运营（第二组统计，重点格金红） -->
     <div class="app-sec">今日运营</div>
-    <div class="app-card tex-c stats">
+    <div class="app-card tex-32 stats">
       <div class="stat hot"><b>{{ ov.todayEvalCount ?? 0 }}</b><span>今日评价</span></div>
       <div class="stat"><b>{{ ov.onlineCount ?? 0 }}</b><span>当前在线</span></div>
       <div class="stat"><b>{{ ov.dailyActive ?? 0 }}</b><span>24h 活跃</span></div>
@@ -54,7 +54,7 @@
 
     <!-- AI 使用情况摘要（按师明细在「教师使用情况」页） -->
     <div class="app-sec">AI 使用情况</div>
-    <div class="app-card tex-e stats">
+    <div class="app-card tex-33 stats">
       <div class="stat"><b>{{ aiTasks }}</b><span>近 30 天生成（次）</span></div>
       <div class="stat"><b>{{ aiTokens }}</b><span>近 30 天 tokens</span></div>
     </div>

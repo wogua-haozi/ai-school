@@ -6,7 +6,7 @@
     </div>
 
     <!-- 进行中 -->
-    <div v-if="running.length" class="app-card overlap tl green tex-e group">
+    <div v-if="running.length" class="app-card overlap tl green tex-37 group">
       <div class="app-sec" style="margin: 0 0 4px">进行中<span class="cnt">{{ running.length }}</span></div>
       <div v-for="t in running" :key="t.taskId" class="task" @click="goAi(t)">
         <span class="t-icon spin"><van-icon name="replay" /></span>
@@ -18,7 +18,7 @@
     </div>
 
     <!-- AI 任务：最近完成 -->
-    <div class="app-card tex-f group" :class="{ overlap: !running.length }">
+    <div class="app-card tex-01 group" :class="{ overlap: !running.length }">
       <div class="app-sec" style="margin: 0 0 4px">AI 任务<span class="cnt">{{ done.length }}</span></div>
       <div v-if="!done.length" class="empty">还没有任务，去寄语/成长总结页发起</div>
       <div v-for="t in done" :key="t.taskId" class="task" @click="goAi(t)">
@@ -36,7 +36,7 @@
     </div>
 
     <!-- 报告批量任务（原批量任务页并入） -->
-    <div class="app-card tex-f group">
+    <div class="app-card tex-02 group">
       <div class="app-sec" style="margin: 0 0 4px">报告批量任务<span class="cnt">{{ batchTasks.length }}</span>
         <span class="more" @click="$router.push('/reports')">发起生成 ›</span>
       </div>

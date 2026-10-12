@@ -83,6 +83,15 @@ public class OaController {
         return ApiResponse.ok();
     }
 
+    /** 公章一审审批人候选池（批52①：申请人提交时从行政候选名单自选 1~多人或签；名单=管理端 oa_seal_l1 配置） */
+    @GetMapping("/seal/candidates")
+    public ApiResponse<List<Map<String, Object>>> sealCandidates() {
+        if ("PARENT".equals(com.aischool.server.security.AuthUtil.current().role())) {
+            throw new BizException(403, "家长账号无需使用行政办公审批");
+        }
+        return ApiResponse.ok(oaService.sealCandidates());
+    }
+
     /** 发起页物资下拉（可申领字典；库存实时） */
     @GetMapping("/goods")
     public ApiResponse<List<Map<String, Object>>> goods() {

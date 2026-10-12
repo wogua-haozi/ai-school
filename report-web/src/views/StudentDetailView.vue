@@ -16,7 +16,7 @@
     </div>
 
     <!-- 功能入口：跳到各功能页（除活动外全部带该生预选，打开即是 TA 的数据） -->
-    <div class="app-card overlap tl tex-a grid">
+    <div class="app-card overlap tl tex-12 grid">
       <button v-for="g in entries" :key="g.name" class="g-item" type="button" @click="go(g)">
         <span class="g-icon" :style="{ background: g.bg }"><van-icon :name="g.icon" /></span>
         <span>{{ g.name }}</span>
@@ -24,7 +24,7 @@
     </div>
 
     <!-- TA的闪光时刻：微光照片墙（有微光才显示） -->
-    <div v-if="moments.length" class="app-card tl gold tex-d moments">
+    <div v-if="moments.length" class="app-card tl gold tex-13 moments">
       <div class="app-sec" style="margin: 0 0 10px">TA的闪光时刻<span class="mo-cnt">{{ moments.length }}</span></div>
       <div class="mo-grid">
         <div v-for="m in moments" :key="m.id" class="mo-item">
@@ -44,7 +44,7 @@
     <PhotoPreview ref="photoPreview" />
 
     <!-- 基本信息卡（学籍卡风格） -->
-    <div class="app-card tl tex-e info">
+    <div class="app-card tl tex-14 info">
       <div class="app-sec" style="margin: 0 0 6px">基本信息<span class="card-tag">学籍卡</span>
         <button v-if="editable" class="edit-btn" type="button" @click="openEdit">编辑资料</button>
       </div>
@@ -56,7 +56,7 @@
     </div>
 
     <!-- 家长账号卡（批8.5：仅管理员/领导/班主任可见；班主任可重置家长密码） -->
-    <div v-if="editable" class="app-card tl tex-f parents">
+    <div v-if="editable" class="app-card tl tex-15 parents">
       <div class="app-sec" style="margin: 0 0 6px">家长账号<span class="mo-cnt">{{ parents.length }}</span></div>
       <van-empty v-if="!parents.length" description="暂无绑定的家长账号" image="search" />
       <div v-for="p in parents" :key="p.parentId" class="pa">

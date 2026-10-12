@@ -271,7 +271,7 @@ body {
 }
 .app-hero::before {                 /* 虚化校园底图：低透明度融进渐变，保住文字对比度 */
   content: ''; position: absolute; inset: -40px;
-  background: url('/campus-bg.jpg') center 42%/cover no-repeat;
+  background: var(--campus-bg, url('/campus-bg.jpg')) center 42%/cover no-repeat;
   opacity: .28; filter: blur(9px) saturate(1.15); pointer-events: none;
 }
 .app-hero > * { position: relative; }
@@ -318,23 +318,54 @@ body {
   margin: 20px 2px 2px; color: #ABA48F; font-size: 11px; letter-spacing: 2px; }
 .app-foot::before, .app-foot::after { content: ''; flex: 1; max-width: 56px; border-top: 1px solid #E3DCCB; }
 
-/* 卡片虚化底纹：tex-a~f 六张校园主题图轮换垫底，上覆白纱（87%），文字永远清晰；
-   底图放大到 190% 取中心，像素自然发虚成「虚化大图」感 */
+/* 卡片虚化底纹（批52③）：37 张学校介绍照片全池轮换，同页面不重复（静态位按页错开、
+   轮换位续在本页静态位之后）；上覆白纱（74%），文字永远清晰；底图放大到 190% 取中心 */
 .app-card[class*='tex-'] {
   background-image: linear-gradient(rgba(255,255,255,.74), rgba(255,255,255,.74)), var(--tex);
   background-size: cover, 190%;
   background-position: center;
 }
-.app-card.tex-d {   /* 黑板图最深，多盖一层保文字对比 */
+.tex-01 { --tex: url('/textures/tex-01.jpg'); }  /* 跑道足球场 */
+.tex-02 { --tex: url('/textures/tex-02.jpg'); }  /* 体育馆 */
+.tex-03 { --tex: url('/textures/tex-03.jpg'); }  /* 体艺节红旗 */
+.tex-04 { --tex: url('/textures/tex-04.jpg'); }  /* 体艺节晚会 */
+.tex-05 { --tex: url('/textures/tex-05.jpg'); }  /* 合唱室 */
+.tex-06 { --tex: url('/textures/tex-06.jpg'); }  /* 扬琴课 */
+.tex-07 { --tex: url('/textures/tex-07.jpg'); }  /* 团结校园 */
+.tex-08 { --tex: url('/textures/tex-08.jpg'); }  /* 孔圣园 */
+.tex-09 { --tex: url('/textures/tex-09.jpg'); }  /* 扬长大舞台 */
+.tex-10 { --tex: url('/textures/tex-10.jpg'); }  /* 美术之夜 */
+.tex-11 { --tex: url('/textures/tex-11.jpg'); }  /* 导师制 */
+.tex-12 { --tex: url('/textures/tex-12.jpg'); }  /* 数学科技节 */
+.tex-13 { --tex: url('/textures/tex-13.jpg'); }  /* 爱乐农场 */
+.tex-14 { --tex: url('/textures/tex-14.jpg'); }  /* 晚会风采 */
+.tex-15 { --tex: url('/textures/tex-15.jpg'); }  /* 体艺晚会 */
+.tex-16 { --tex: url('/textures/tex-16.jpg'); }  /* 田径场 */
+.tex-17 { --tex: url('/textures/tex-17.jpg'); }  /* 巅峰拼字 */
+.tex-18 { --tex: url('/textures/tex-18.jpg'); }  /* 宿舍 */
+.tex-19 { --tex: url('/textures/tex-19.jpg'); }  /* 教学楼 */
+.tex-20 { --tex: url('/textures/tex-20.jpg'); }  /* 巧手拨时光 */
+.tex-21 { --tex: url('/textures/tex-21.jpg'); }  /* 现代化教室 */
+.tex-22 { --tex: url('/textures/tex-22.jpg'); }  /* 机器人操场 */
+.tex-23 { --tex: url('/textures/tex-23.jpg'); }  /* 机器人专训室 */
+.tex-24 { --tex: url('/textures/tex-24.jpg'); }  /* 足球场 */
+.tex-25 { --tex: url('/textures/tex-25.jpg'); }  /* 校园乐队 */
+.tex-26 { --tex: url('/textures/tex-26.jpg'); }  /* 体艺节开幕式 */
+.tex-27 { --tex: url('/textures/tex-27.jpg'); }  /* 校训石 */
+.tex-28 { --tex: url('/textures/tex-28.jpg'); }  /* 校门口 */
+.tex-29 { --tex: url('/textures/tex-29.jpg'); }  /* 模拟法庭 */
+.tex-30 { --tex: url('/textures/tex-30.jpg'); }  /* 武术大课间 */
+.tex-31 { --tex: url('/textures/tex-31.jpg'); }  /* 扬长课程 */
+.tex-32 { --tex: url('/textures/tex-32.jpg'); }  /* 生命定格 */
+.tex-33 { --tex: url('/textures/tex-33.jpg'); }  /* 美术室 */
+.tex-34 { --tex: url('/textures/tex-34.jpg'); }  /* 英语大擂台 */
+.tex-35 { --tex: url('/textures/tex-35.jpg'); }  /* 行健楼 */
+.tex-36 { --tex: url('/textures/tex-36.jpg'); }  /* 图书馆 */
+.tex-37 { --tex: url('/textures/tex-37.jpg'); }  /* 饭堂 */
+/* 暗图槽位（亮度<118）多盖一层白纱，保文字对比（沿用原黑板图先例） */
+.app-card.tex-02, .app-card.tex-04, .app-card.tex-07, .app-card.tex-08, .app-card.tex-12, .app-card.tex-13, .app-card.tex-15, .app-card.tex-25, .app-card.tex-34 {
   background-image: linear-gradient(rgba(255,255,255,.85), rgba(255,255,255,.85)), var(--tex);
 }
-.tex-a { --tex: url('/textures/tex-1503676260728-1c00da094a0b.jpg'); }  /* 课堂师生互动（校方实拍） */
-.tex-b { --tex: url('/textures/tex-1427504494785-3a9ca7044f45.jpg'); }  /* 扬长课程课堂（校方实拍） */
-.tex-c { --tex: url('/textures/tex-1509062522246-3755977927d7.jpg'); }  /* 美术室（校方实拍） */
-.tex-d { --tex: url('/textures/tex-1546410531-bb4caa6b424d.jpg'); }     /* VEX机器人专训室（校方实拍） */
-.tex-e { --tex: url('/textures/tex-1571260899304-425eee4c7efc.jpg'); }  /* 校园建筑（校方实拍） */
-.tex-f { --tex: url('/textures/tex-1577896851231-70ef18881754.jpg'); }  /* 爱乐农场劳动（校方实拍） */
-.tex-g { --tex: url('/textures/tex-1507842217343-583bb7270b66.jpg'); }  /* 诗词大会书香（校方实拍） */
 
 /* 区块标题（图1「快捷功能」「最近动态」式小标题）：竖条 + 尾部虚线延伸 */
 .app-sec { display: flex; align-items: center; gap: 8px; margin: 18px 2px 10px;
@@ -362,7 +393,7 @@ body {
 .app-sub:not(.admin) .el-card {
   border-top: 3px solid #EAE5DA;
   background-image: linear-gradient(rgba(255,255,255,.92), rgba(255,255,255,.92)),
-    url('/textures/tex-1503676260728-1c00da094a0b.jpg');   /* 浅书本底纹：表格可读性优先 */
+    url('/textures/tex-22.jpg');   /* 浅底纹（机器人操场，37 张中最亮）：表格可读性优先 */
   background-size: cover, 190%;
 }
 /* 成绩单从学生详情进来的该生行高亮（红系软底+左竖条锚点） */

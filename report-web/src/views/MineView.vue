@@ -11,14 +11,14 @@
       </div>
     </div>
 
-    <div class="app-card overlap tl tex-f cells">
+    <div class="app-card overlap tl tex-31 cells">
       <!-- 批37：教师档案/成长报告/德育规范已上首页宫格（我的成长/报告档案/成长激励），此处不再重复 -->
       <van-cell title="消息通知" icon="volume-o" is-link :value="notifyBadge" @click="$router.push('/notify')" />
       <van-cell title="生成中心" icon="bell" is-link :value="running ? `${running} 进行中` : ''" @click="$router.push('/notice')" />
       <van-cell v-if="auth.role === 'ADMIN'" title="系统管理" icon="setting-o" is-link @click="$router.push('/admin')" />
     </div>
 
-    <div class="app-card tex-e cells">
+    <div class="app-card tex-32 cells">
       <van-cell title="修改手机号" icon="phone-o" is-link @click="phoneOpen = true" />
       <van-cell title="修改密码" icon="lock" is-link @click="pwdOpen = true" />
       <van-cell title="意见反馈" icon="chat-o" is-link @click="$router.push('/feedback')" />

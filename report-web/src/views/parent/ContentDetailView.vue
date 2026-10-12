@@ -4,7 +4,7 @@
 
     <template v-else-if="item">
       <!-- 标题卡 -->
-      <div class="app-card head tex-a">
+      <div class="app-card head tex-36">
         <h1>{{ item.title }}</h1>
         <p class="meta">
           {{ fmtTime(item.publishTime) }}
@@ -16,12 +16,12 @@
       <img v-if="coverSrc" class="app-card cover" :src="coverSrc" alt="" />
 
       <!-- 正文（宣纸底，保留换行） -->
-      <div v-if="item.content" class="app-card body-text tex-c">
+      <div v-if="item.content" class="app-card body-text tex-37">
         <p>{{ item.content }}</p>
       </div>
 
       <!-- 外链视频（App 内点开走系统浏览器；视频文件不直传服务器） -->
-      <a v-if="item.videoUrl" class="app-card video-link tex-e" :href="item.videoUrl" target="_blank" rel="noopener">
+      <a v-if="item.videoUrl" class="app-card video-link tex-01" :href="item.videoUrl" target="_blank" rel="noopener">
         <span class="v-icon">▶</span>
         <span class="v-text">观看视频<span class="v-sub">（在浏览器中打开）</span></span>
       </a>

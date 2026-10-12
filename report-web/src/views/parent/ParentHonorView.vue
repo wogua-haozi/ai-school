@@ -9,7 +9,7 @@
 
     <!-- 我家孩子的荣誉：上传（待班主任确认）+ 列表 -->
     <div class="app-sec">{{ curName }}的荣誉 · {{ rows.length }} 条</div>
-    <div class="app-card tex-b up">
+    <div class="app-card tex-11 up">
       <van-button round block plain type="primary" icon="photograph" :loading="uploading"
         loading-text="正在上传…" @click="pickPhoto">上传荣誉证书</van-button>
       <p class="tip">拍下孩子在校外获得的奖状证书，班主任确认后全校可见</p>
@@ -95,6 +95,7 @@ import { Capacitor } from '@capacitor/core'
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
 import { api, apiForm, fetchBlob } from '../../api/http'
 import { openFile } from '../../api/nativeShare'
+import { texAt } from '../../utils/tex'
 
 interface Kid { studentId: number; name: string }
 interface Honor { id: number; name: string; level?: string; issuer?: string; honorDate?: string
@@ -238,9 +239,8 @@ async function viewWall(w: WallRow) {
   } catch { /* 已提示 */ }
 }
 
-function tex(id: number) {
-  return `tex-${'abcd'[id % 4]}`
-}
+// 批52③ 37 槽轮换池：本页基准 19、静态位 1（上传卡=tex-20），轮换续在 21 起避撞
+const tex = (id: number) => texAt(20 + id)
 
 onMounted(async () => {
   children.value = await api<Kid[]>('/api/parent/children').catch(() => [])

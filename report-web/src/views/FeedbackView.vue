@@ -1,7 +1,7 @@
 <template>
   <div class="app-page feedback">
     <!-- 提交卡 -->
-    <div class="app-card tl tex-a form">
+    <div class="app-card tl tex-16 form">
       <div class="app-sec" style="margin: 0 0 10px">意见反馈</div>
       <p class="lead">使用中遇到问题、或有改进建议，欢迎告诉我们；也可在这里报数据错误（如联系方式变更未生效）。</p>
       <van-field v-model="content" type="textarea" rows="3" maxlength="1000" show-word-limit
@@ -13,7 +13,7 @@
     </div>
 
     <!-- 我的反馈 -->
-    <div class="app-card tex-e list">
+    <div class="app-card tex-17 list">
       <div class="app-sec" style="margin: 0 0 6px">我的反馈</div>
       <van-empty v-if="!items.length" description="暂无反馈记录" />
       <div v-for="f in items" :key="f.id" class="fb">

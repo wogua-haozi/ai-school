@@ -112,6 +112,17 @@ public class DataScopeService {
         throw new BizException(403, "只有管理员或该班班主任可执行此操作");
     }
 
+    /** 批54① 微光时刻口径：全体老师可给自己「可见」班级拍微光——任课班∪挂名班主任班∪年级绑定班
+        （与 /api/meta/my-classes 下拉同源 visibleClassIds，前后端口径一致）；管理员/学成/书记/生活老师
+        全校、领导限分管学段。不再要求班主任身份（原走 checkClassOperable，任课老师提交 403） */
+    public void checkClassTeachable(UserPrincipal user, Long classId) {
+        List<Long> visible = visibleClassIds(user);
+        if (visible == null || visible.contains(classId)) {
+            return;
+        }
+        throw new BizException(403, "仅可为自己任课或负责的班级记录微光");
+    }
+
     // ───────── 批41：分管学段（教学数据面）─────────
 
     /** 领导分管学段（t_user.stage_scope；非领导/未设置=null 即不受限） */

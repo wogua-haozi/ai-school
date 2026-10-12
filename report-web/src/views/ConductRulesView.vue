@@ -2,7 +2,7 @@
   <div class="app-page rules">
     <!-- 口径说明：文明班评比口径，勿与个人操行分等第混淆 -->
     <div class="app-sec">量化考核标准</div>
-    <div class="app-card tex-e basis">
+    <div class="app-card tex-07 basis">
       <b>《中学生日常行为规范》量化考核标准</b>
       <p class="basis-txt">{{ CONDUCT_BASIS }}</p>
       <p class="note">{{ CONDUCT_NOTE }}</p>
@@ -10,7 +10,7 @@
 
     <!-- 12 大项细则：折叠面板，默认展开第一项 -->
     <div class="app-sec">十二项细则</div>
-    <div class="app-card tl tex-c pane">
+    <div class="app-card tl tex-08 pane">
       <van-collapse v-model="active">
         <van-collapse-item v-for="(s, i) in CONDUCT_SECTIONS" :key="i" :name="i">
           <template #title>

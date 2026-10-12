@@ -120,13 +120,25 @@ public class OaService {
                 return ids;
             }
         }
+        // 批52①：公章一审=申请人自选（detail.l1Ids，或签任一人过级）；旧单无 l1Ids 走配置兜底
+        if (OaForm.TYPE_SEAL.equals(form.getFormType()) && level == 1) {
+            List<Long> ids = detailLongList(form, "l1Ids");
+            if (!ids.isEmpty()) {
+                return ids;
+            }
+        }
         return approverIds(form.getFormType(), level);
     }
 
     /** 采购单验收人（detail JSON acceptorIds；旧单/解析失败=空走配置兜底） */
     private List<Long> detailAcceptorIds(OaForm form) {
+        return detailLongList(form, "acceptorIds");
+    }
+
+    /** detail JSON 里的 Long 数组字段（批49 acceptorIds / 批52① 公章 l1Ids 共用；解析失败=空） */
+    private List<Long> detailLongList(OaForm form, String key) {
         try {
-            var node = JSON.readTree(form.getDetail()).get("acceptorIds");
+            var node = JSON.readTree(form.getDetail()).get(key);
             if (node == null || !node.isArray()) {
                 return List.of();
             }
@@ -156,6 +168,10 @@ public class OaService {
                 continue; // 批49①：验收人=单据级（默认申请人，提交时可改），无需全局配置
             }
             if (validUserIds(approverIds(formType, i)).isEmpty()) {
+                if (OaForm.TYPE_SEAL.equals(formType) && i == 1) {
+                    // 批52①：一级=行政候选池（申请人提交时自选），配置语义是候选名单而非固定审批人
+                    throw new BizException(400, "管理员尚未配置公章一审候选名单（行政人员），请联系管理员配置后再提交");
+                }
                 throw new BizException(400, "管理员尚未配齐「" + typeName(formType) + "」第 " + i
                         + " 级（" + nodeName(formType, i) + "）审批人，请联系管理员配置后再提交");
             }
@@ -185,12 +201,15 @@ public class OaService {
         private String useDate;
         private List<GoodsLine> goodsLines;
         private Long venueId; // 批11：场地申请（t_venue）
+        private String startTime; // 批52②：场地使用起止时间（HH:mm，半小时粒度）
+        private String endTime;
         // 批43①：采购申请（钉钉流程移植）
         private String expectDate; // 期望交付日期
         private String place; // 交付地点
         private List<String> photos; // 附件 objectName（先传 /purchase/photo 预上传拿 key）
         private List<PurchaseItem> items; // 采购明细（多组）
         private List<Long> acceptorIds; // 批49①：采购验收人（默认=申请人，提交时可改）
+        private List<Long> l1ApproverIds; // 批52①：公章一审审批人（申请人从行政候选池自选 1~多人，或签）
     }
 
     @Data
@@ -230,9 +249,23 @@ public class OaService {
             if (req.getTitle() == null || req.getTitle().isBlank()) {
                 throw new BizException(400, "请填写申请事由");
             }
+            // 批52①：一审审批人=申请人从行政候选池（oa_seal_l1）自选 1~多人，任一人通过即过级（或签）
+            List<Long> l1 = req.getL1ApproverIds() == null ? List.<Long>of()
+                    : req.getL1ApproverIds().stream().filter(java.util.Objects::nonNull).distinct().toList();
+            if (l1.isEmpty()) {
+                throw new BizException(400, "请选择一审审批人（行政人员）");
+            }
+            if (l1.stream().anyMatch(id -> id.equals(user.userId()))) {
+                throw new BizException(400, "一审审批人不能选自己");
+            }
+            List<Long> pool = validUserIds(approverIds(type, 1));
+            if (!pool.containsAll(l1)) {
+                throw new BizException(400, "一审审批人须在学校配置的行政候选名单内选择");
+            }
             Map<String, Object> detail = new LinkedHashMap<>();
             detail.put("reason", req.getTitle());
             detail.put("useDate", req.getUseDate());
+            detail.put("l1Ids", l1);
             form.setTitle(req.getTitle().trim());
             form.setDetail(toJson(detail));
         } else if (type.equals(OaForm.TYPE_VENUE)) {
@@ -246,13 +279,21 @@ public class OaService {
             if (v == null || v.getStatus() == null || v.getStatus() != 1) {
                 throw new BizException(400, "场地不存在或已停用");
             }
-            checkVenueFree(v.getId(), req.getUseDate());
+            // 批52②：起止时间具体到半小时（06:00~23:00 内，00/30 分粒度，结束须晚于开始）
+            int sMin = parseHalfHour(req.getStartTime(), "开始");
+            int eMin = parseHalfHour(req.getEndTime(), "结束");
+            if (eMin <= sMin) {
+                throw new BizException(400, "结束时间须晚于开始时间");
+            }
+            checkVenueFree(v.getId(), req.getUseDate(), sMin, eMin);
             Map<String, Object> detail = new LinkedHashMap<>();
             detail.put("venueId", v.getId());
             detail.put("venueName", v.getName());
             detail.put("useDate", req.getUseDate());
+            detail.put("startTime", req.getStartTime());
+            detail.put("endTime", req.getEndTime());
             detail.put("reason", req.getTitle().trim());
-            form.setTitle(v.getName() + "·" + req.getUseDate());
+            form.setTitle(v.getName() + "·" + req.getUseDate() + " " + req.getStartTime() + "-" + req.getEndTime());
             form.setDetail(toJson(detail));
         } else if (type.equals(OaForm.TYPE_PURCHASE)) {
             if (req.getTitle() == null || req.getTitle().isBlank()) {
@@ -351,8 +392,9 @@ public class OaService {
         log.setNodeName(NODE_SUBMIT);
         log.setOperatorId(user.userId());
         logMapper.insert(log);
-        // 批29：通知第一级审批人（App 通知中心 + 企微群）；批43① 或签=逐人通知、群合并一条
-        List<Long> first = validUserIds(approverIds(type, 1));
+        // 批29：通知第一级审批人（App 通知中心 + 企微群）；批43① 或签=逐人通知、群合并一条；
+        // 批52① 公章一审=单据级自选名单，走单据感知解析（form 已 insert）
+        List<Long> first = validUserIds(approverIds(form, 1));
         if (!first.isEmpty()) {
             notificationService.oaTodoAny(first, typeName(type), form.getTitle(), form.getId(), user.realName());
         }
@@ -413,6 +455,13 @@ public class OaService {
             m.put("createTime", l.getCreateTime());
             return m;
         }).toList());
+        // 批52① 公章：一审自选审批人姓名回显（旧单无 l1Ids 不下发）
+        List<Long> sealL1 = detailLongList(form, "l1Ids");
+        if (OaForm.TYPE_SEAL.equals(form.getFormType()) && !sealL1.isEmpty()) {
+            Map<Long, String> nm = userMapper.selectBatchIds(sealL1).stream()
+                    .collect(Collectors.toMap(User::getId, User::getRealName, (a, b) -> a));
+            out.put("l1Names", sealL1.stream().map(l1Id -> nm.getOrDefault(l1Id, "")).filter(s -> !s.isBlank()).toList());
+        }
         // 批43① 采购：附件流回 URL + 库存参考（库存确认节点辅助）+ 抄送人展示
         if (OaForm.TYPE_PURCHASE.equals(form.getFormType())) {
             Map<String, Object> d = parseObj(form.getDetail());
@@ -468,7 +517,10 @@ public class OaService {
                 && approverIds(form, form.getCurrentLevel()).contains(user.userId());
         boolean procurement = OaForm.TYPE_GOODS.equals(form.getFormType())
                 && "PROCUREMENT".equals(user.role());
-        return applicant || approver || procurement;
+        // 批52① 公章：参与过该单的人（一审自选+二审/三审配置成员）终态后仍可查详情（结果可见口径）
+        boolean sealParticipant = OaForm.TYPE_SEAL.equals(form.getFormType())
+                && sealParticipantIds(form).contains(user.userId());
+        return applicant || approver || procurement || sealParticipant;
     }
 
     // ---- 审批动作 ----
@@ -509,6 +561,7 @@ public class OaService {
             finish(form, OaForm.REJECTED);
             notificationService.oaResult(form.getApplicantId(), typeName(form.getFormType()), form.getTitle(), false, req.getNote());
             ccPurchase(form, false, req.getNote(), user);
+            ccSeal(form, false, req.getNote());
             return;
         }
         if (!OaFlowLog.AGREE.equals(action)) {
@@ -519,10 +572,14 @@ public class OaService {
             // 批33 两段式：物资末级通过=待领取，招采核销时才扣库存出库（见 issue()）
             finish(form, OaForm.APPROVED);
             String note = OaForm.TYPE_GOODS.equals(form.getFormType())
-                    ? "审批通过，请到招采部门领取，领取后由招采核销出库" : req.getNote();
+                    ? "审批通过，请到招采部门领取，领取后由招采核销出库"
+                    : OaForm.TYPE_SEAL.equals(form.getFormType())
+                    ? "三级审批已通过，请到党政办盖章" : req.getNote();
             notificationService.oaResult(form.getApplicantId(), typeName(form.getFormType()), form.getTitle(), true, note);
             // 批43① 采购验收通过：入库由招采线下手动处理（不走物资台账自动入库）
             ccPurchase(form, true, note, user);
+            // 批52① 公章终态：结果通知一审自选人+二审（党政办）+三审（书记）全体（通知即达=结果可见）
+            ccSeal(form, true, req.getNote());
         } else {
             form.setCurrentLevel(form.getCurrentLevel() + 1);
             formMapper.updateById(form);
@@ -695,18 +752,52 @@ public class OaService {
         }
     }
 
-    /** 同场地同日已被 PENDING/APPROVED 单据占用则拒绝（撤回/驳回后释放，可重提；场地申请量小，Java 层过滤 detail JSON） */
-    private void checkVenueFree(Long venueId, String useDate) {
+    /**
+     * 批52② 同场地同日时段重叠则拒绝（[start,end) 半开区间，相邻如 10:00-11:30 与 11:30-13:00 不算冲突）。
+     * 旧单（批52 前无起止时间）=全天占用语义，与新申请同日即冲突；撤回/驳回后释放可重提。
+     * 场地申请量小，Java 层过滤 detail JSON。
+     */
+    private void checkVenueFree(Long venueId, String useDate, int startMin, int endMin) {
         List<OaForm> held = formMapper.selectList(new LambdaQueryWrapper<OaForm>()
                 .eq(OaForm::getFormType, OaForm.TYPE_VENUE)
                 .in(OaForm::getStatus, List.of(OaForm.PENDING, OaForm.APPROVED)));
         for (OaForm f : held) {
             Map<String, Object> d = parseObj(f.getDetail());
             Object vid = d.get("venueId");
-            if (vid instanceof Number n && n.longValue() == venueId && useDate.equals(d.get("useDate"))) {
-                throw new BizException(400, "「" + d.get("venueName") + "」在 " + useDate + " 已有申请单（#" + f.getId() + "），请改期或联系管理员");
+            if (!(vid instanceof Number n) || n.longValue() != venueId || !useDate.equals(d.get("useDate"))) {
+                continue;
+            }
+            Integer os = detailMinute(d.get("startTime"));
+            Integer oe = detailMinute(d.get("endTime"));
+            if (os == null || oe == null || startMin < oe && os < endMin) {
+                throw new BizException(400, "「" + d.get("venueName") + "」在 " + useDate + " "
+                        + (os == null || oe == null ? "全天" : os / 60 + ":" + String.format("%02d", os % 60) + "-" + oe / 60 + ":" + String.format("%02d", oe % 60))
+                        + " 已有申请单（#" + f.getId() + "），请改时段或联系管理员");
             }
         }
+    }
+
+    /** detail JSON 里的 HH:mm → 当日分钟数（缺失/格式错=null，旧单全天语义由调用方处理） */
+    private static Integer detailMinute(Object v) {
+        if (!(v instanceof String s) || !s.matches("^([01]\\d|2[0-3]):[0-5]\\d$")) {
+            return null;
+        }
+        return Integer.parseInt(s.substring(0, 2)) * 60 + Integer.parseInt(s.substring(3));
+    }
+
+    /** 提交入参 HH:mm 校验：格式正确 + 00/30 半小时粒度 + 06:00~23:00 范围，返回当日分钟数（批52②） */
+    private static int parseHalfHour(String hhmm, String label) {
+        Integer m = detailMinute(hhmm);
+        if (m == null) {
+            throw new BizException(400, "请选择" + label + "时间");
+        }
+        if (m % 30 != 0) {
+            throw new BizException(400, label + "时间须按半小时（00 或 30 分）选择");
+        }
+        if (m < 6 * 60 || m > 23 * 60) {
+            throw new BizException(400, label + "时间须在 06:00~23:00 之间");
+        }
+        return m;
     }
 
     // ───────── 批43① 采购：抄送 / 附件 ─────────
@@ -737,6 +828,46 @@ public class OaService {
                             + (approved ? "已审批通过（" + operator.realName() + " 验收）" : "已被驳回")
                             + (note == null || note.isBlank() ? "" : "，意见：" + note), "/oa");
         }
+    }
+
+    // ───────── 批52① 公章：参与人可见 / 终态通知 / 候选池 ─────────
+
+    /** 公章单全链参与人：一审自选 l1Ids ∪ 二级 ∪ 三级配置（distinct；终态后详情仍可见的口径） */
+    private List<Long> sealParticipantIds(OaForm form) {
+        List<Long> ids = new ArrayList<>(detailLongList(form, "l1Ids"));
+        ids.addAll(approverIds(OaForm.TYPE_SEAL, 2));
+        ids.addAll(approverIds(OaForm.TYPE_SEAL, 3));
+        return ids.stream().distinct().toList();
+    }
+
+    /** 公章终态通知（批52①）：一审自选+二级（党政办）+三级（书记）全体收结果（通知即达=结果可见；申请人走 oaResult 不重复） */
+    private void ccSeal(OaForm form, boolean approved, String note) {
+        if (!OaForm.TYPE_SEAL.equals(form.getFormType())) {
+            return;
+        }
+        String applicantName = userNames(form, List.of()).getOrDefault(form.getApplicantId(), "");
+        for (Long id : validUserIds(sealParticipantIds(form))) {
+            if (id.equals(form.getApplicantId())) {
+                continue;
+            }
+            notificationService.send(id, Notification.OA_RESULT,
+                    "公章使用申请" + (approved ? "已通过" : "已被驳回"),
+                    applicantName + " 提交的「" + form.getTitle() + "」"
+                            + (approved ? "已三级审批通过，可到党政办盖章" : "已被驳回")
+                            + (note == null || note.isBlank() ? "" : "，意见：" + note), "/oa");
+        }
+    }
+
+    /** 公章一审候选池（批52①：oa_seal_l1 配置=行政候选名单；过滤停用账号，前端选人弹层数据源） */
+    public List<Map<String, Object>> sealCandidates() {
+        List<Long> ids = validUserIds(approverIds(OaForm.TYPE_SEAL, 1));
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        return userMapper.selectBatchIds(ids).stream()
+                .filter(u -> u.getStatus() == null || u.getStatus() != 0)
+                .map(u -> Map.<String, Object>of("id", u.getId(), "realName", u.getRealName()))
+                .toList();
     }
 
     /** 采购附件预上传（multipart→MinIO oa/ 前缀；submit 时只带 objectName 列表，同报修凭证模式） */

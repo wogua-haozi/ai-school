@@ -1,7 +1,7 @@
 <template>
   <div class="app-page p-leave">
     <!-- 批32：家长不再 App 提交请假（微信/电话联系班主任，由老师登记），此页只读收通知+查记录 -->
-    <div class="app-card tex-b tip">
+    <div class="app-card tex-14 tip">
       学生请假请直接联系班主任（微信/电话），由老师在系统登记办理；办理进度与结果会在「通知」里提醒，也可在本页查看。
     </div>
 

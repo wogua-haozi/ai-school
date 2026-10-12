@@ -18,7 +18,7 @@
     </div>
 
     <!-- 查询条件 -->
-    <div class="app-card overlap tl tex-a query">
+    <div class="app-card overlap tl tex-22 query">
       <van-field v-model="q" label="搜索" placeholder="学号 / 姓名 / 班级" class="q-in" @update:model-value="debouncedLoad" />
       <div class="date-row" @click="dateOpen = true">
         <span>核验日期</span><b>{{ date }}</b><van-icon name="arrow" />
@@ -27,7 +27,7 @@
 
     <!-- 有效请假列表 -->
     <div class="app-sec">当日有效请假单（已批准）</div>
-    <div class="app-card tex-c list">
+    <div class="app-card tex-23 list">
       <van-skeleton v-if="!loaded" :row="6" />
       <div v-else-if="!rows.length" class="empty">该日期没有有效请假单</div>
       <div v-for="r in rows" :key="r.id" class="row">

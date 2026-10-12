@@ -56,7 +56,7 @@
             <el-input v-model="csItemText" placeholder="如：课室卫生检查不达标 / 全班广播操一等奖" style="max-width: 360px" />
           </el-form-item>
           <el-form-item label="分值">
-            <el-input-number v-model="csDelta" :step="1" :min="-50" :max="50" :precision="0" controls-position="right" style="width: 120px" />
+            <el-input-number v-model="csDelta" :step="0.5" :min="-50" :max="50" :precision="1" controls-position="right" style="width: 120px" />
             <span class="hint">正=加分，负=扣分（±50 以内）</span>
           </el-form-item>
           <el-form-item label="备注">
@@ -184,7 +184,7 @@ const csCategoryItems = computed(() => {
 function pickCsItem(it: { text: string; delta: string }) {
   csItemText.value = it.text
   const d = Number(it.delta)
-  if (d) csDelta.value = d
+  if (it.delta !== '' && !Number.isNaN(d)) csDelta.value = d
 }
 
 async function loadCsRecords() {

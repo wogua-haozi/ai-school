@@ -2,7 +2,7 @@
   <div class="app-page mlist" :class="{ tall: filtered.length }">
     <van-pull-refresh v-model="refreshing" @refresh="reload" success-text="已刷新">
     <!-- 班级行 + 标签筛选 -->
-    <div class="app-card tl gold tex-d top">
+    <div class="app-card tl gold tex-34 top">
       <van-cell title="班级" is-link :value="curClassName || '选择班级'" @click="clsOpen = true" />
       <div class="chips">
         <button class="chip" :class="{ on: tag === '' }" type="button" @click="tag = ''">全部</button>

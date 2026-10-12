@@ -11,7 +11,7 @@
       </div>
     </div>
 
-    <div class="app-card overlap tl tex-f cells">
+    <div class="app-card overlap tl tex-17 cells">
       <van-cell title="消息通知" icon="volume-o" is-link :value="notifyBadge" @click="$router.push('/p/notify')" />
       <van-cell title="修改手机号" icon="phone-o" is-link @click="phoneOpen = true" />
       <van-cell title="修改密码" icon="lock" is-link @click="pwdOpen = true" />
@@ -20,7 +20,7 @@
       <van-cell title="账号说明" icon="shield-o" is-link @click="tipOpen = true" />
     </div>
 
-    <div class="app-card tex-e cells">
+    <div class="app-card tex-18 cells">
       <van-cell title="检查更新" icon="upgrade" is-link :value="appVersion" @click="onCheckUpdate" />
       <van-cell v-if="!isNative" title="服务器地址" icon="desktop-o" is-link :value="srvBase || '默认'" @click="srvOpen = true" />
       <van-cell title="关于" icon="info-o" is-link @click="aboutOpen = true" />

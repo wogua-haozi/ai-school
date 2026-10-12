@@ -1,7 +1,7 @@
 <template>
   <div class="app-page dorm">
     <!-- 宿管查询（全体教师：按宿舍楼/房/床查学生，应急找人场景） -->
-    <div class="app-card tex-b query">
+    <div class="app-card tex-10 query">
       <div class="f-row">
         <van-field v-model="building" is-link readonly label="宿舍楼" :placeholder="building || '全部'"
           class="q-in" right-icon="arrow" @click="bOpen = true" />
@@ -15,7 +15,7 @@
     </div>
 
     <!-- 学生列表 -->
-    <div class="app-card tex-c list">
+    <div class="app-card tex-11 list">
       <van-skeleton v-if="!loaded" :row="6" />
       <div v-else-if="!rows.length" class="empty">没有匹配的学生（宿舍信息由名册导入，个别缺失可联系管理员订正）</div>
       <div v-for="s in rows" :key="s.id" class="row">

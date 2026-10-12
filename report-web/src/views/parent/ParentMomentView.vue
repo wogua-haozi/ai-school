@@ -8,7 +8,7 @@
     </div>
 
     <!-- 上传卡：拍照/选照片 + 备注（进孩子成长档案，家长+班主任可见） -->
-    <div class="app-card sec tex-b upload">
+    <div class="app-card sec tex-20 upload">
       <div class="u-photo" :class="{ empty: !photoUrl }" @click="pickPhoto">
         <img v-if="photoUrl" class="preview" :src="photoUrl" alt="">
         <div v-else class="hint">
@@ -59,6 +59,7 @@ import { showConfirmDialog, showImagePreview, showToast } from 'vant'
 import { Capacitor } from '@capacitor/core'
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
 import { api, apiForm, fetchBlob } from '../../api/http'
+import { texAt } from '../../utils/tex'
 
 interface Kid { studentId: number; name: string }
 interface Mom { id: number; note: string; sceneTag: string; source: string; own: boolean
@@ -78,9 +79,8 @@ const photoCache = reactive<Record<number, string>>({})
 
 const curName = computed(() => children.value.find((c) => c.studentId === curId.value)?.name ?? '')
 
-function tex(id: number) {
-  return ['tex-a', 'tex-c', 'tex-e', 'tex-f', 'tex-g'][id % 5]
-}
+// 批52③ 37 槽轮换池：本页基准 28、静态位 1（上传卡），轮换续在 29
+const tex = (id: number) => texAt(29 + id)
 function fmtTime(t: string) {
   return t ? t.slice(0, 16).replace('T', ' ') : ''
 }

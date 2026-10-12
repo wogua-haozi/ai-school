@@ -3,7 +3,7 @@
     <div class="app-sec">导师谈心</div>
 
     <!-- 发起卡 -->
-    <div class="app-card tex-b form">
+    <div class="app-card tex-21 form">
       <div class="picker-card" @click="showPicker = true">
         <span class="ava" :class="{ has: student }" :style="student ? { background: avaColor(student.name) } : {}">
           {{ student ? student.name.charAt(0) : '?' }}

@@ -37,6 +37,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { api } from '../../api/http'
+import { texAt } from '../../utils/tex'
 
 interface UsageRow {
   teacherId: number; name: string; role: string
@@ -62,9 +63,8 @@ const ranges = [
   { label: '近90天', days: 90 },
 ]
 
-function tex(i: number) {
-  return ['tex-a', 'tex-b', 'tex-c', 'tex-e', 'tex-f', 'tex-g'][i % 6]
-}
+// 批52③ 37 槽轮换池：本页基准 1（无静态位，轮换从基准起）
+const tex = (i: number) => texAt(1 + i)
 function roleLabel(r: string) {
   return ({ ADMIN: '管理员', LEADER: '领导', HEAD_TEACHER: '班主任', TEACHER: '任课教师' } as Record<string, string>)[r] ?? r
 }

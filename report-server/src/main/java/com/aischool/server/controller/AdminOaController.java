@@ -49,7 +49,12 @@ public class AdminOaController {
         permissionService.checkAdminAccess("只有管理员可配置审批人");
         Map<Long, String> names = approverNames();
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("sealApprovers", approverView("seal", names));
+        // 批52① 公章：一级=行政候选池（多人）、二级=党政办或签、三级=书记，统一 csv 多人口径
+        List<List<Map<String, Object>>> seal = new java.util.ArrayList<>();
+        for (int i = 1; i <= 3; i++) {
+            seal.add(idListView(oaService.cfgOf("oa_seal_l" + i), names));
+        }
+        out.put("sealApprovers", seal);
         out.put("goodsApprovers", approverView("goods", names));
         out.put("venueApprovers", approverView("venue", names));
         out.put("goodsLevels", oaService.levels("GOODS"));
@@ -89,15 +94,12 @@ public class AdminOaController {
                 .toList();
     }
 
-    /** 五型涉及的审批人姓名 */
+    /** 五型涉及的审批人姓名（批52① seal 起为 csv 多人；goods/venue 单值同样走 csv 解析兼容） */
     private Map<Long, String> approverNames() {
         List<Long> ids = new java.util.ArrayList<>();
         for (int i = 1; i <= 3; i++) {
             for (String type : List.of("seal", "goods", "venue")) {
-                String v = oaService.cfgOf("oa_" + type + "_l" + i);
-                if (!v.isEmpty()) {
-                    ids.add(Long.parseLong(v));
-                }
+                addCsvIds(ids, oaService.cfgOf("oa_" + type + "_l" + i));
             }
         }
         for (int i = 1; i <= 5; i++) {
@@ -120,8 +122,13 @@ public class AdminOaController {
     @PutMapping("/oa/config")
     public ApiResponse<Void> setConfig(@Validated @RequestBody ConfigReq req) {
         permissionService.checkAdminAccess("只有管理员可配置审批人");
+        // 批52① 公章三级全部多人 csv（一级=行政候选池，申请人提交时自选）
+        List<List<Long>> seal = req.getSealApprovers();
         for (int i = 1; i <= 3; i++) {
-            oaService.setCfg("oa_seal_l" + i, idStr(req.getSealApprovers(), i));
+            List<Long> lv = seal != null && seal.size() >= i ? seal.get(i - 1) : null;
+            oaService.setCfg("oa_seal_l" + i, csvOf(lv));
+        }
+        for (int i = 1; i <= 3; i++) {
             oaService.setCfg("oa_goods_l" + i, idStr(req.getGoodsApprovers(), i));
             oaService.setCfg("oa_venue_l" + i, idStr(req.getVenueApprovers(), i));
         }
@@ -348,7 +355,7 @@ public class AdminOaController {
 
     @Data
     public static class ConfigReq {
-        private List<Long> sealApprovers; // [l1,l2,l3] 空位=null
+        private List<List<Long>> sealApprovers; // 批52① [l1[],l2[],l3[]] 每级多人（一级=行政候选池）
         private Integer goodsLevels;
         private List<Long> goodsApprovers;
         private Integer venueLevels; // 批11

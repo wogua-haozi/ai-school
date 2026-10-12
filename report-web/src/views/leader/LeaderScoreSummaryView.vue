@@ -24,7 +24,7 @@
       </div>
 
       <!-- 考试信息条 -->
-      <div class="app-card meta tex-a">
+      <div class="app-card meta tex-33">
         <b>{{ summary.exam.name }}</b>
         <span>{{ summary.exam.termName }} · {{ summary.exam.examDate ?? '日期未定' }} · 满分 {{ summary.fullScore ?? '—' }}</span>
         <span>参考 {{ summary.total }} 人 · {{ !subjectId ? '总分' : summary.subjectName }}排名</span>
@@ -32,7 +32,7 @@
 
       <!-- 各班统计（均分/最高/参考人数） -->
       <div class="app-sec">各班统计</div>
-      <div class="app-card tex-b classes">
+      <div class="app-card tex-34 classes">
         <div v-for="c in summary.classStats" :key="c.classId" class="cls">
           <p class="cn">{{ c.className }}<span>{{ c.count }} 人参考</span></p>
           <div class="cs">
@@ -45,7 +45,7 @@
 
       <!-- 年级排名（分页） -->
       <div class="app-sec">年级排名 · {{ summary.total }} 人</div>
-      <div class="app-card tex-c ranks">
+      <div class="app-card tex-35 ranks">
         <div v-for="r in summary.rows" :key="r.studentId" class="rk" :class="{ top: r.gradeRank <= 3 }">
           <i class="no">{{ r.gradeRank }}</i>
           <div class="who">

@@ -1,7 +1,7 @@
 <template>
   <div class="app-page oa">
     <!-- 发起入口 -->
-    <div class="app-card tex-b start">
+    <div class="app-card tex-06 start">
       <button class="start-btn seal" type="button" @click="openNew('SEAL')">
         <van-icon name="bookmark-o" /><span>公章使用申请</span>
       </button>
@@ -73,7 +73,7 @@
     <van-popup v-model:show="newOpen" position="bottom" round :style="{ maxHeight: '82%' }" class="pop">
       <div class="p-head">
         <b>{{ typeLabel(newType) }}</b>
-        <small>{{ newType === 'SEAL' ? '提交后依次经一、二、三级审批'
+        <small>{{ newType === 'SEAL' ? '一级审批人提交时自选（行政人员，任一人通过即过级）→ 二级 → 三级'
           : newType === 'PURCHASE' ? '五级审批：部门负责人 → 库存确认 → 主管校领导 → 招采中心 → 采购验收'
           : '提交后按学校配置的级数审批' }}</small>
       </div>
@@ -81,6 +81,9 @@
         <template v-if="newType === 'SEAL'">
           <van-field v-model="newTitle" type="textarea" rows="2" autosize label="事由" placeholder="例如：学生竞赛报名表盖章"
             :rules="[{ required: true, message: '请填写事由' }]" />
+          <!-- 批52① 一级审批人：从行政候选池自选 1~多人（或签），不能选自己 -->
+          <van-field :model-value="sealL1Label" is-link readonly label="一级审批人" placeholder="从行政人员中选择（必选）"
+            @click="openSealCandidates" />
           <van-field :model-value="useDate" is-link readonly label="使用日期" placeholder="选择日期（可选）"
             @click="openDate('use')" />
         </template>
@@ -89,6 +92,11 @@
             @click="venueOpen = true" />
           <van-field :model-value="venueDate" is-link readonly label="使用日期" placeholder="必选"
             @click="openDate('venue')" />
+          <!-- 批52② 起止时间（半小时粒度，同场地时段重叠无法提交） -->
+          <van-field :model-value="venueStart" is-link readonly label="开始时间" placeholder="必选"
+            @click="openTime('vs')" />
+          <van-field :model-value="venueEnd" is-link readonly label="结束时间" placeholder="必选"
+            @click="openTime('ve')" />
           <van-field v-model="newTitle" type="textarea" rows="2" autosize label="事由"
             placeholder="例如：班会课使用报告厅" />
           <p v-if="!venues.length" class="goods-tip">暂无可申请场地，请管理员先在管理端维护场地字典</p>
@@ -161,6 +169,7 @@
           <!-- 明细 -->
           <div class="app-sec" style="margin: 0 0 4px">申请明细</div>
           <div v-if="detail.formType === 'SEAL'" class="detail-cells">
+            <p v-if="detail.l1Names?.length"><span>一级审批人</span><b>{{ detail.l1Names.join('、') }}</b></p>
             <p><span>使用日期</span><b>{{ detailJson.useDate || '未指定' }}</b></p>
             <p><span>事由</span><b>{{ detailJson.reason }}</b></p>
           </div>
@@ -172,6 +181,7 @@
           <div v-else-if="detail.formType === 'VENUE'" class="detail-cells">
             <p><span>场地</span><b>{{ detailJson.venueName }}</b></p>
             <p><span>使用日期</span><b>{{ detailJson.useDate }}</b></p>
+            <p v-if="detailJson.startTime"><span>使用时段</span><b>{{ detailJson.startTime }} ~ {{ detailJson.endTime }}</b></p>
             <p><span>事由</span><b>{{ detailJson.reason }}</b></p>
           </div>
           <!-- 批43① 采购：基础信息 + 明细 + 附件 + 库存参考 -->
@@ -211,6 +221,10 @@
               <span>{{ l.name }}</span><b>{{ l.qty }} {{ l.unit }}<small v-if="l.location"> · {{ l.location }}</small></b>
             </p>
           </div>
+          <!-- 批52① 公章终态提示：三级通过后到党政办盖章（链尾，不打断上方 v-if 链） -->
+          <p v-if="detail.formType === 'SEAL' && detail.status === 'APPROVED'" class="seal-pass-tip">
+            三级审批已通过，请到党政办盖章
+          </p>
 
           <!-- 流转日志 -->
           <div class="app-sec" style="margin: 14px 0 4px">流转记录</div>
@@ -254,6 +268,12 @@
         v-model="dateBuf" :columns-type="['year', 'month', 'day']"
         :min-date="minDate" :max-date="maxDate" @confirm="onDateOk" @cancel="dateOpen = false" />
     </van-popup>
+    <!-- 批52② 场地起止时间（06:00~23:00，分钟 00/30 步进） -->
+    <van-popup v-model:show="timeOpen" position="bottom" round>
+      <van-time-picker :title="timeTitle" v-model="timeBuf" :columns-type="['hour', 'minute']"
+        :filter="halfHourFilter" min-time="06:00" max-time="23:00"
+        @confirm="onTimeOk" @cancel="timeOpen = false" />
+    </van-popup>
 
     <!-- 批49① 验收人选择：搜索+多选（同配置或签口径，任一人验收即过级）；不选=申请人本人 -->
     <van-popup v-model:show="acceptorOpen" position="bottom" round :style="{ maxHeight: '72%' }" class="pop">
@@ -271,6 +291,25 @@
           <p v-if="!acceptorFiltered.length" class="empty">无匹配人员</p>
         </div>
         <van-button round block type="primary" size="small" class="mini-btn" @click="acceptorOpen = false">确定</van-button>
+      </div>
+    </van-popup>
+
+    <!-- 批52① 公章一级审批人选择：行政候选池多选（或签，任一人通过即过级）；不能选自己 -->
+    <van-popup v-model:show="sealPickOpen" position="bottom" round :style="{ maxHeight: '72%' }" class="pop">
+      <div class="p-head">
+        <b>选择一级审批人</b>
+        <small>从行政候选名单选 1~多人，任一人通过即过级</small>
+      </div>
+      <div class="p-body">
+        <van-search v-model="sealKw" placeholder="搜索姓名" />
+        <div class="acc-list">
+          <div v-for="t in sealCandFiltered" :key="t.id" class="acc-row" @click="toggleSealCand(t.id)">
+            <van-checkbox :model-value="sealL1Ids.includes(t.id)" shape="square" @click.prevent="toggleSealCand(t.id)" />
+            <span>{{ t.realName }}</span>
+          </div>
+          <p v-if="!sealCandFiltered.length" class="empty">暂无候选（请联系管理员在管理端配置行政候选名单）</p>
+        </div>
+        <van-button round block type="primary" size="small" class="mini-btn" @click="sealPickOpen = false">确定</van-button>
       </div>
     </van-popup>
 
@@ -332,6 +371,7 @@ interface OaDetail extends OaRow {
   stockMatches?: { item: string; name: string; stock: number; unit: string; location: string }[]
   ccNames?: string[]
   acceptorNames?: string[] // 批49① 采购验收人
+  l1Names?: string[] // 批52① 公章一级审批人（申请人自选）
 }
 interface GoodsOpt { id: number; name: string; unit: string; stock: number; location: string }
 
@@ -371,6 +411,29 @@ const venueId = ref(0)
 const venueName = ref('')
 const venueDate = ref('')
 
+/* 批52② 场地起止时间（半小时粒度，两个字段共用一个 time-picker；空 model 须预置默认值，同日期 picker 教训） */
+const timeOpen = ref(false)
+const timeField = ref<'vs' | 've'>('vs')
+const timeBuf = ref<string[]>(['08', '00'])
+const venueStart = ref('')
+const venueEnd = ref('')
+const timeTitle = computed(() => (timeField.value === 'vs' ? '开始时间' : '结束时间'))
+// Vant TimePicker filter 的选项是 {text,value} 对象（非数字），按 value 取半点
+const halfHourFilter = (type: string, options: unknown[]) =>
+  type === 'minute' ? options.filter((o) => Number((o as { value?: unknown })?.value ?? o) % 30 === 0) : options
+function openTime(field: 'vs' | 've') {
+  timeField.value = field
+  const v = field === 'vs' ? venueStart.value : venueEnd.value
+  timeBuf.value = v ? v.split(':') : field === 'vs' ? ['08', '00'] : ['09', '00']
+  timeOpen.value = true
+}
+function onTimeOk() {
+  const v = timeBuf.value.join(':')
+  if (timeField.value === 'vs') venueStart.value = v
+  else venueEnd.value = v
+  timeOpen.value = false
+}
+
 // ───────── 批43① 采购申请 ─────────
 const purExpectDate = ref('')
 const purPlace = ref('')
@@ -403,6 +466,32 @@ function toggleAcceptor(id: number) {
   const i = acceptorIds.value.indexOf(id)
   if (i >= 0) acceptorIds.value.splice(i, 1)
   else acceptorIds.value.push(id)
+}
+
+// 批52① 公章一级审批人：行政候选池（管理端配置）多选，或签
+const sealL1Ids = ref<number[]>([])
+const sealPickOpen = ref(false)
+const sealKw = ref('')
+const sealCands = ref<{ id: number; realName: string }[]>([])
+const sealL1Label = computed(() => {
+  if (!sealL1Ids.value.length) return ''
+  return sealL1Ids.value.map((id) => sealCands.value.find((t) => t.id === id)?.realName)
+    .filter(Boolean).join('、')
+})
+const sealCandFiltered = computed(() => {
+  const kw = sealKw.value.trim()
+  return kw ? sealCands.value.filter((t) => t.realName.includes(kw)) : sealCands.value
+})
+function openSealCandidates() {
+  sealPickOpen.value = true
+  if (!sealCands.value.length) {
+    api<{ id: number; realName: string }[]>('/api/oa/seal/candidates').then((d) => (sealCands.value = d)).catch(() => {})
+  }
+}
+function toggleSealCand(id: number) {
+  const i = sealL1Ids.value.indexOf(id)
+  if (i >= 0) sealL1Ids.value.splice(i, 1)
+  else sealL1Ids.value.push(id)
 }
 
 /** 附件选图即传（≤3 张，jpg/jpeg/png；提交时只带 objectName） */
@@ -476,9 +565,12 @@ function openNew(type: string) {
   newType.value = type
   newTitle.value = ''
   useDate.value = ''
+  sealL1Ids.value = [] // 批52① 公章一级审批人随单重选
   venueId.value = 0
   venueName.value = ''
   venueDate.value = ''
+  venueStart.value = ''
+  venueEnd.value = ''
   newLines.value = [{ goodsId: 0, name: '', qty: '' }]
   purExpectDate.value = ''
   purPlace.value = ''
@@ -508,19 +600,23 @@ function onGoods(ev: { selectedOptions: { text: string; value: number }[] }) {
 async function doSubmit() {
   if (newType.value === 'SEAL') {
     if (!newTitle.value.trim()) { showToast('请填写事由'); return }
+    if (!sealL1Ids.value.length) { showToast('请选择一级审批人（行政人员）'); return }
     submitting.value = true
     try {
-      await api('/api/oa/submit', { method: 'POST', json: { formType: 'SEAL', title: newTitle.value, useDate: useDate.value } })
+      await api('/api/oa/submit', { method: 'POST', json: { formType: 'SEAL', title: newTitle.value, useDate: useDate.value, l1ApproverIds: sealL1Ids.value } })
     } finally { submitting.value = false }
   } else if (newType.value === 'VENUE') {
     if (!venueId.value) { showToast('请选择场地'); return }
     if (!venueDate.value) { showToast('请选择使用日期'); return }
+    if (!venueStart.value) { showToast('请选择开始时间'); return }
+    if (!venueEnd.value) { showToast('请选择结束时间'); return }
+    if (venueEnd.value <= venueStart.value) { showToast('结束时间须晚于开始时间'); return }
     if (!newTitle.value.trim()) { showToast('请填写申请事由'); return }
     submitting.value = true
     try {
       await api('/api/oa/submit', {
         method: 'POST',
-        json: { formType: 'VENUE', title: newTitle.value, venueId: venueId.value, useDate: venueDate.value },
+        json: { formType: 'VENUE', title: newTitle.value, venueId: venueId.value, useDate: venueDate.value, startTime: venueStart.value, endTime: venueEnd.value },
       })
     } finally { submitting.value = false }
   } else if (newType.value === 'PURCHASE') {
@@ -807,6 +903,10 @@ onMounted(load)
 .acts .van-button { flex: 1; }
 .node-tip { margin: 10px 4px 4px; font-size: 11px; color: var(--app-text-3); }
 .node-tip b { color: var(--app-text-2); }
+
+/* 批52① 公章终态提示条 */
+.seal-pass-tip { margin: 10px 2px 0; padding: 9px 12px; border-radius: 10px; font-size: 12px;
+  color: #0D9467; background: #ECFDF5; border: 1px solid #A7F3D0; }
 
 /* 招采工作台（批33） */
 .proc-filters { margin-top: 12px; padding: 10px 14px; }

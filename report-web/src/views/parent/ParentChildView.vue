@@ -1,7 +1,7 @@
 <template>
   <div class="app-page p-child">
     <!-- 孩子信息卡（第一版卡片语言；psub 壳已有返回导航条，页面内不再叠 hero） -->
-    <div class="app-card tl tex-a kid-card">
+    <div class="app-card tl tex-05 kid-card">
       <div class="avatar">{{ child?.name?.charAt(0) ?? '?' }}</div>
       <div class="info">
         <h1>{{ child?.name ?? '加载中…' }}<span v-if="child?.relation" class="app-chip rel">{{ child.relation }}</span></h1>
@@ -12,7 +12,7 @@
     <!-- 成长银行双账本（批3）：操行分 + 扬长币 -->
     <div class="app-sec">成长银行</div>
     <div class="wallet">
-      <div class="app-card tex-e w-cell">
+      <div class="app-card tex-06 w-cell">
         <p class="w-label">操行分 · <b :class="'g-' + wallet.conduct?.grade">{{ wallet.conduct?.grade ?? '—' }} 级</b></p>
         <strong>{{ wallet.conduct?.balance ?? '—' }}</strong>
         <span class="w-sub">基础 {{ wallet.conduct?.rule?.baseScore }} · A≥{{ wallet.conduct?.rule?.gradeAMin }} B≥{{ wallet.conduct?.rule?.gradeBMin }}</span>
@@ -24,7 +24,7 @@
           </p>
         </div>
       </div>
-      <div class="app-card tex-d w-cell">
+      <div class="app-card tex-07 w-cell">
         <p class="w-label">扬长币 · 可用</p>
         <strong class="c-gold">{{ wallet.coin?.currentCoin ?? 0 }}</strong>
         <span class="w-sub">累计获得 {{ wallet.coin?.totalCoin ?? 0 }}</span>
@@ -39,7 +39,7 @@
     </div>
 
     <!-- 成长档案入口（批14 生命周期）：在校全期记录 -->
-    <div class="app-card tex-f archive-link" @click="goArchive">
+    <div class="app-card tex-08 archive-link" @click="goArchive">
       <van-icon name="records" class="a-icon" />
       <div class="a-text">
         <b>成长档案</b>
@@ -50,7 +50,7 @@
 
     <!-- 成长动态（feed 结构同教师端最近动态） -->
     <div class="app-sec">成长动态</div>
-    <div class="app-card tex-c feed">
+    <div class="app-card tex-09 feed">
       <van-skeleton v-if="loading" :row="6" class="feed-skeleton" />
       <div v-else-if="!evaluations.length" class="feed-empty">还没有老师评价记录</div>
       <article v-for="(e, i) in evaluations" :key="i" class="eval">

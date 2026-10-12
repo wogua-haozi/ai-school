@@ -1,7 +1,7 @@
 <template>
   <div class="app-page fp">
     <!-- 六维统计（奖项=教师风采已录荣誉聚合） -->
-    <div class="app-card tex-a stats">
+    <div class="app-card tex-19 stats">
       <div v-for="s in SIX" :key="s.key" class="stat" @click="filter = filter === s.key ? '' : s.key">
         <b :class="{ dim: filter && filter !== s.key }">{{ summary[s.key] ?? 0 }}</b>
         <span>{{ s.label }}</span>
@@ -10,7 +10,7 @@
 
     <!-- 录入卡 -->
     <div class="app-sec">记一笔足迹</div>
-    <div class="app-card tex-b form">
+    <div class="app-card tex-20 form">
       <van-field :model-value="typeLabel" is-link readonly label="类型" placeholder="选择类型（必选）"
         @click="typeOpen = true" />
       <van-field v-model="title" label="标题" maxlength="128" placeholder="必填，如：区级公开课《背影》" />

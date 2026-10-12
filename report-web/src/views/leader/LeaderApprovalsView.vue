@@ -41,6 +41,7 @@
 import { onMounted, ref } from 'vue'
 import { showConfirmDialog, showSuccessToast, showToast } from 'vant'
 import { api } from '../../api/http'
+import { texAt } from '../../utils/tex'
 
 interface ReqRow {
   id: number; userId: number; username: string; realName: string
@@ -53,9 +54,8 @@ const loading = ref(true)
 const refreshing = ref(false)
 const acting = ref<number | null>(null)
 
-function tex(i: number) {
-  return ['tex-a', 'tex-b', 'tex-c', 'tex-e', 'tex-f', 'tex-g'][i % 6]
-}
+// 批52③ 37 槽轮换池：本页基准 29（无静态位，轮换从基准起）
+const tex = (i: number) => texAt(29 + i)
 function fmtTime(t: string) {
   return t.slice(0, 16).replace('T', ' ')
 }

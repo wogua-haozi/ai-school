@@ -1,7 +1,7 @@
 <template>
   <div class="app-page repair">
     <!-- 发起 -->
-    <div class="app-card tex-b form">
+    <div class="app-card tex-09 form">
       <van-field v-model="location" label="地点/设施" placeholder="例如：初二(3)班 教室前门"
         :maxlength="100" class="f-in" />
       <van-field v-model="description" type="textarea" rows="2" autosize label="故障描述" placeholder="描述故障情况（必填，500 字内）"

@@ -8,7 +8,7 @@
         <div class="hello">
           <p class="hi">{{ greeting }}，{{ auth.realName }}</p>
           <h1>石实SHINE</h1>
-          <p class="sub">记录成长的每一步</p>
+          <p class="sub">学生的每一步成长都值得被看见</p>
         </div>
         <div class="hero-actions">
           <RouterLink to="/notify" class="hero-btn" aria-label="消息通知">
@@ -21,16 +21,17 @@
     </div>
 
     <!-- 统计卡（图1：上浮叠在头区渐变上） -->
-    <div class="app-card overlap tl tex-a stats">
+    <div class="app-card overlap tl tex-28 stats">
       <div class="stat"><b>{{ summary.studentCount ?? '—' }}</b><span>在册学生</span></div>
       <div class="stat"><b>{{ summary.reportCount ?? '—' }}</b><span>学期报告</span></div>
       <div class="stat"><b :class="{ hot: running > 0 }">{{ running }}</b><span>进行中任务</span></div>
     </div>
 
     <!-- 快捷功能宫格（批37 IA 重组：5 分区替代扁平宫格，功能全量可直达） -->
-    <template v-for="sec in sections" :key="sec.label">
+    <template v-for="(sec, si) in sections" :key="sec.label">
       <div class="app-sec">{{ sec.label }}</div>
-      <div class="app-card tex-b grid">
+      <!-- 批52③ 37 槽轮换池：本页基准 27、静态位 2（统计卡/动态卡），宫格分区轮换续在 31 起 -->
+      <div class="app-card grid" :class="texAt(30 + si)">
         <button v-for="g in sec.items" :key="g.to" class="g-item" type="button" @click="$router.push(g.to)">
           <span class="g-icon" :style="{ background: g.bg }"><van-icon :name="g.icon" /></span>
           <span>{{ g.name }}</span>
@@ -40,7 +41,7 @@
 
     <!-- 最近动态（图2 卡片样式缩略，查看全部 → 成长记录流） -->
     <div class="app-sec">最近动态<RouterLink class="more" to="/feed">查看全部 ›</RouterLink></div>
-    <div class="app-card tex-c feed">
+    <div class="app-card tex-30 feed">
       <van-skeleton v-if="!loaded" :row="6" class="feed-skeleton" />
       <div v-else-if="!feed.length" class="feed-empty">还没有动态，去记一条学生表现吧</div>
       <div v-for="(f, i) in feed" :key="i" class="feed-item"
@@ -73,6 +74,7 @@ import { useNotifyStore } from '../stores/notify'
 import { useAssetStore } from '../stores/asset'
 import { api } from '../api/http'
 import { relTime } from '../utils/fmt'
+import { texAt } from '../utils/tex'
 
 const auth = useAuthStore()
 const asset = useAssetStore()

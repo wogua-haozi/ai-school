@@ -17,7 +17,7 @@
     </div>
 
     <!-- 我的孩子（上浮卡，一号可绑多孩） -->
-    <div class="app-card overlap tl tex-a kids">
+    <div class="app-card overlap tl tex-08 kids">
       <div v-if="loading" class="empty">加载中…</div>
       <div v-else-if="!children.length" class="empty">暂未绑定孩子，请联系学校管理员绑定</div>
       <RouterLink v-for="c in children" :key="c.studentId" class="kid" :to="`/p/child/${c.studentId}`">
@@ -33,7 +33,7 @@
     <!-- 校园服务宫格（同教师端快捷功能形态）：批2 通知/内容上宫格、批5 家长版成长报告（去成绩板块）；
          批37 追加：通知公告/扬长课程升底部导航 Tab（此处移除） -->
     <div class="app-sec">校园服务</div>
-    <div class="app-card tex-b grid-card">
+    <div class="app-card tex-09 grid-card">
       <div class="grid">
         <button v-for="g in grids" :key="g.name" class="g-item" type="button"
           :class="{ off: !g.to }" @click="g.to ? $router.push(g.to) : showToast('该功能即将开放')">
@@ -46,7 +46,7 @@
 
     <!-- 最新成长动态（feed 结构同教师端最近动态）：第一个孩子最近 5 条评价 -->
     <div class="app-sec">最新成长动态<RouterLink v-if="children.length" class="more" :to="`/p/child/${children[0].studentId}`">查看全部 ›</RouterLink></div>
-    <div class="app-card tex-c feed">
+    <div class="app-card tex-10 feed">
       <van-skeleton v-if="!loaded" :row="6" class="feed-skeleton" />
       <div v-else-if="!recent.length" class="feed-empty">还没有孩子的成长动态</div>
       <article v-for="(e, i) in recent" :key="i" class="eval">
