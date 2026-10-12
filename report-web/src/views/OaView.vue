@@ -169,6 +169,7 @@
             <p><span>场地</span><b>{{ detailJson.venueName }}</b></p>
             <p><span>使用日期</span><b>{{ detailJson.useDate }}</b></p>
             <p v-if="detailJson.startTime"><span>使用时段</span><b>{{ detailJson.startTime }} ~ {{ detailJson.endTime }}</b></p>
+            <p v-if="detailJson.phone"><span>联系电话</span><b>{{ detailJson.phone }}</b></p>
             <p><span>事由</span><b>{{ detailJson.reason }}</b></p>
           </div>
           <!-- 批43① 采购：基础信息 + 明细 + 附件 + 库存参考 -->

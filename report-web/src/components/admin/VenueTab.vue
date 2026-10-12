@@ -111,7 +111,8 @@ async function save() {
   await load()
 }
 
-/** 照片选图即传（jpg/png ≤10MB，上传成功即更新场地照片） */
+/** 照片选图即传（jpg/png ≤10MB，上传成功即更新场地照片）。
+    photoUrl 地址不变（/api/venue/photo/{id}），须先清本地 blob 缓存再重拉，否则预览停在旧图 */
 async function onPhoto(e: Event) {
   const f = (e.target as HTMLInputElement).files?.[0]
   ;(e.target as HTMLInputElement).value = ''
@@ -122,6 +123,7 @@ async function onPhoto(e: Event) {
     fd.append('photo', f)
     await apiForm(`/api/admin/venue/${editForm.value.id}/photo`, fd)
     ElMessage.success('照片已更新')
+    delete imgs.value[editForm.value.id]
     await load()
   } finally { uploading.value = false }
 }

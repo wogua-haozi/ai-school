@@ -28,8 +28,7 @@
             </p>
             <!-- 时段条 06:00~23:00（半小时粒度）：青绿=已批占用 黄=待审 -->
             <div class="v-slots">
-              <span v-for="(c, i) in slotClasses(v)" :key="i" class="sg" :class="c"
-                :style="i % 6 === 0 ? { borderLeft: 'none' } : undefined"></span>
+              <span v-for="(c, i) in slotClasses(v)" :key="i" class="sg" :class="c"></span>
             </div>
             <div class="v-scale"><span>6</span><span>9</span><span>12</span><span>15</span><span>18</span><span>21</span><span>23</span></div>
           </div>
