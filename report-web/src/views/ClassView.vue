@@ -130,10 +130,10 @@ const keyword = ref('')
 const loading = ref(true)
 const pickOpen = ref(false)
 
-/* 家长邀请码（批8.6）：班主任/级长/管理员可见（后端按班硬校验） */
+/* 家长邀请码（批8.6）：班主任/级长/管理员可见（后端按班硬校验；批51b 补 GRADE_LEADER 对齐手册口径） */
 const auth = useAuthStore()
 const asset = useAssetStore()
-const canInvite = computed(() => ['HEAD_TEACHER', 'LEADER', 'ADMIN'].includes(auth.role))
+const canInvite = computed(() => ['HEAD_TEACHER', 'GRADE_LEADER', 'LEADER', 'ADMIN'].includes(auth.role))
 interface InviteRow { studentId: number; studentNo: string; name: string; code: string; registered: boolean; boundCount: number }
 const inviteOpen = ref(false)
 const inviteBusy = ref(false)

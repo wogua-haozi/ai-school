@@ -149,14 +149,15 @@ public class CivilityService {
 
     // ───────── 批43：班级整体加减分（进文明班评比，不落具体学生、不进个人档案） ─────────
 
-    /** 班级记分写权限（拍板口径）：班主任本班 / 级长（绑定年级）/ 学成中心主任 / 领导 / 管理员 */
+    /** 班级记分写权限（拍板口径）：班主任本班 / 级长（绑定年级）/ 学成中心主任 / 领导 / 管理员。
+     *  批51b 挂名即班主任：挂名者不问账号角色 */
     private void checkClassScoreAllowed(Clazz c) {
         var user = com.aischool.server.security.AuthUtil.current();
         String role = user.role();
         if ("ADMIN".equals(role) || "LEADER".equals(role) || "DIRECTOR".equals(role)) {
             return;
         }
-        if ("HEAD_TEACHER".equals(role) && user.userId().equals(c.getHeadTeacherId())) {
+        if (user.userId().equals(c.getHeadTeacherId())) {
             return;
         }
         if ("GRADE_LEADER".equals(role)) {
@@ -171,7 +172,7 @@ public class CivilityService {
         throw new BizException(403, "班级记分限班主任（本班）、级长、学成中心主任或管理员");
     }
 
-    /** 可记分班级列表（前端下拉）：班主任=本班；级长=绑定年级全部班；主任/领导/管理员=全校 */
+    /** 可记分班级列表（前端下拉）：班主任=挂名班；级长=绑定年级全部班∪挂名班；主任/领导/管理员=全校（批51b 挂名即认） */
     public List<Map<String, Object>> classScoreClasses() {
         var user = com.aischool.server.security.AuthUtil.current();
         String role = user.role();
@@ -179,14 +180,15 @@ public class CivilityService {
         java.util.function.Predicate<Clazz> can;
         if ("ADMIN".equals(role) || "LEADER".equals(role) || "DIRECTOR".equals(role)) {
             can = c -> true;
-        } else if ("HEAD_TEACHER".equals(role)) {
-            can = c -> user.userId().equals(c.getHeadTeacherId());
-        } else if ("GRADE_LEADER".equals(role)) {
-            Set<Long> bound = gradeBindingMapper.selectList(new LambdaQueryWrapper<GradeBinding>()
+        } else if ("HEAD_TEACHER".equals(role) || "TEACHER".equals(role) || "GRADE_LEADER".equals(role)
+                || "SECRETARY".equals(role) || "DORM".equals(role) || "PROCUREMENT".equals(role)) {
+            Set<Long> bound = "GRADE_LEADER".equals(role)
+                    ? gradeBindingMapper.selectList(new LambdaQueryWrapper<GradeBinding>()
                             .eq(GradeBinding::getUserId, user.userId())
                             .eq(GradeBinding::getDuty, GradeBinding.DUTY_GRADE_LEADER))
-                    .stream().map(GradeBinding::getGradeId).collect(Collectors.toSet());
-            can = c -> bound.contains(c.getGradeId());
+                    .stream().map(GradeBinding::getGradeId).collect(Collectors.toSet())
+                    : java.util.Set.of();
+            can = c -> user.userId().equals(c.getHeadTeacherId()) || bound.contains(c.getGradeId());
         } else {
             throw new BizException(403, "班级记分限班主任（本班）、级长、学成中心主任或管理员");
         }

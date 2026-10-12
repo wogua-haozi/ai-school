@@ -139,24 +139,26 @@ public class StudentLeaveService {
         return Map.of("leaveId", l.getId(), "status", l.getStatus(), "totalStep", totalStep);
     }
 
-    /** 录入权校验：角色门 + 范围门（班主任本班 / 级长本年级），返回学生实体 */
+    /** 录入权校验：角色门 + 范围门（挂名班主任本班 / 级长本年级），返回学生实体。
+     *  批51b 挂名即班主任：t_class 挂名者不问账号角色即可代录本班（普通教师/级长挂名班主任场景） */
     private Student requireCreator(UserPrincipal user, Long studentId) {
         String role = user.role();
         if ("PARENT".equals(role)) {
             throw new BizException(403, "家长请假已改为联系班主任（微信/电话）办理，由老师在系统登记，家长在 App 收通知即可");
         }
-        if ("TEACHER".equals(role) || "GUARD".equals(role)) {
-            throw new BizException(403, "请假登记由班主任/生活老师/级长及以上角色操作");
-        }
         Student s = studentMapper.selectById(studentId);
         if (s == null) {
             throw new BizException(404, "学生不存在");
         }
+        Clazz c = clazzOf(s);
+        if (c != null && user.userId().equals(c.getHeadTeacherId())) {
+            return s;
+        }
+        if ("TEACHER".equals(role) || "GUARD".equals(role)) {
+            throw new BizException(403, "请假登记由班主任/生活老师/级长及以上角色操作");
+        }
         if ("HEAD_TEACHER".equals(role)) {
-            Clazz c = clazzOf(s);
-            if (c == null || !user.userId().equals(c.getHeadTeacherId())) {
-                throw new BizException(403, "班主任只能登记本班学生的请假");
-            }
+            throw new BizException(403, "班主任只能登记本班学生的请假");
         }
         if ("GRADE_LEADER".equals(role) && !boundGradeIds(user).contains(gradeIdOf(s))) {
             throw new BizException(403, "级长只能登记本年级学生的请假");
@@ -445,6 +447,12 @@ public class StudentLeaveService {
                 || "DIRECTOR".equals(role) || "LEADER".equals(role) || "ADMIN".equals(role)
                 || "SECRETARY".equals(role) || "GUARD".equals(role)) {
             return; // 同步对象全员可读详情（列表仍按管辖范围过滤；批39④ 书记=终审人）
+        }
+        // 批51b 挂名即班主任：普通教师挂名班主任可读本班请假详情（列表仍按任课班过滤）
+        Student s = studentMapper.selectById(l.getStudentId());
+        Clazz c = s == null ? null : clazzOf(s);
+        if (c != null && user.userId().equals(c.getHeadTeacherId())) {
+            return;
         }
         throw new BizException(403, "任课教师不可查看学生请假");
     }

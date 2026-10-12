@@ -225,11 +225,11 @@ public class StudentController {
         return ApiResponse.ok(m);
     }
 
-    /** 宿舍查询放行全体教师侧角色（明确挡家长/门卫——不走 visibleClassIds 的班级隔离） */
+    /** 宿舍查询放行全体教师侧角色（明确挡家长/门卫——不走 visibleClassIds 的班级隔离；
+     *  批51b 补齐级长/主任/生活老师/书记/招采，与手册「全体教师可用」口径一致） */
     private void checkTeacherSide() {
         String role = AuthUtil.current().role();
-        if (!"TEACHER".equals(role) && !"HEAD_TEACHER".equals(role)
-                && !"LEADER".equals(role) && !"ADMIN".equals(role)) {
+        if ("PARENT".equals(role) || "GUARD".equals(role)) {
             throw new BizException(403, "仅教师可查询宿舍");
         }
     }
