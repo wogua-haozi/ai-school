@@ -134,14 +134,15 @@ public class AdminOrgController {
         return ApiResponse.ok();
     }
 
-    // ───────────────── 级长-年级绑定（批32） ─────────────────
+    // ───────────────── 年级岗位绑定（批32 级长 / 批51 级部主任，请假审批同权） ─────────────────
 
-    /** 全部级长绑定（含姓名/年级名，Org 页签表格回显） */
+    /** 岗位绑定列表（duty=GRADE_LEADER 级长 / GRADE_DIRECTOR 级部主任；含姓名/年级名，Org 页签表格回显） */
     @GetMapping("/grade-binding")
-    public ApiResponse<List<Map<String, Object>>> gradeBindingList() {
+    public ApiResponse<List<Map<String, Object>>> gradeBindingList(
+            @RequestParam(defaultValue = GradeBinding.DUTY_GRADE_LEADER) String duty) {
         checkAdmin();
         List<GradeBinding> rows = gradeBindingMapper.selectList(new LambdaQueryWrapper<GradeBinding>()
-                .eq(GradeBinding::getDuty, GradeBinding.DUTY_GRADE_LEADER)
+                .eq(GradeBinding::getDuty, duty)
                 .orderByAsc(GradeBinding::getGradeId));
         if (rows.isEmpty()) {
             return ApiResponse.ok(List.of());
@@ -159,30 +160,35 @@ public class AdminOrgController {
             m.put("gradeName", gradeNames.getOrDefault(b.getGradeId(), ""));
             m.put("userId", b.getUserId());
             m.put("userName", userNames.getOrDefault(b.getUserId(), ""));
+            m.put("duty", b.getDuty());
             return m;
         }).toList());
     }
 
-    /** 绑定级长（同年级可多人=正副级长；同人同年级幂等） */
+    /** 绑定岗位（批51：级长=GRADE_LEADER 角色 / 级部主任=GRADE_DIRECTOR 岗位须主任角色账号；同人同年级同岗位幂等） */
     @PostMapping("/grade-binding")
     public ApiResponse<Map<String, Object>> addGradeBinding(@Validated @RequestBody BindingReq req) {
         checkAdmin();
+        boolean directorDuty = GradeBinding.DUTY_GRADE_DIRECTOR.equals(req.getDuty());
+        String duty = directorDuty ? GradeBinding.DUTY_GRADE_DIRECTOR : GradeBinding.DUTY_GRADE_LEADER;
         if (gradeMapper.selectById(req.getGradeId()) == null) {
             throw new BizException(404, "年级不存在");
         }
         User u = userMapper.selectById(req.getUserId());
-        if (u == null || !"GRADE_LEADER".equals(u.getRole())) {
-            throw new BizException(400, "请选择级长角色的账号（先在账号管理把该教师角色设为级长）");
+        if (u == null || !("GRADE_LEADER".equals(u.getRole()) || (directorDuty && "DIRECTOR".equals(u.getRole())))) {
+            throw new BizException(directorDuty
+                    ? "级部主任岗位须选「学成中心主任」角色的账号（先在账号管理把该教师角色设为学成中心主任）"
+                    : "请选择级长角色的账号（先在账号管理把该教师角色设为级长）");
         }
         GradeBinding exists = gradeBindingMapper.selectOne(new LambdaQueryWrapper<GradeBinding>()
                 .eq(GradeBinding::getUserId, req.getUserId())
                 .eq(GradeBinding::getGradeId, req.getGradeId())
-                .eq(GradeBinding::getDuty, GradeBinding.DUTY_GRADE_LEADER));
+                .eq(GradeBinding::getDuty, duty));
         if (exists == null) {
             GradeBinding b = new GradeBinding();
             b.setUserId(req.getUserId());
             b.setGradeId(req.getGradeId());
-            b.setDuty(GradeBinding.DUTY_GRADE_LEADER);
+            b.setDuty(duty);
             gradeBindingMapper.insert(b);
             return ApiResponse.ok(Map.of("bindingId", b.getId()));
         }
@@ -195,6 +201,7 @@ public class AdminOrgController {
         private Long userId;
         @NotNull(message = "gradeId 不能为空")
         private Long gradeId;
+        private String duty;
     }
 
     @DeleteMapping("/grade-binding/{id}")

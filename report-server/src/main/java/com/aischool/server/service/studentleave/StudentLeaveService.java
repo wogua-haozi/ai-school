@@ -33,6 +33,7 @@ import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -44,11 +45,12 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
- * 学生请假（批32 重构 → 批39④ 四级审批）：家长不再 App 提交（微信/电话告知班主任，由教师代录），家长只收通知。
+ * 学生请假（批32 重构 → 批51 三级审批链）：家长不再 App 提交（微信/电话告知班主任，由教师代录），家长只收通知。
  * 分级审批按时长自动判定（阈值 t_sys_config：leave_level1_days/leave_level2_days/leave_max_days）：
- * ≤L1（默认 3 天）录入即生效；L1~L2（3~7 天）级长一级；L2~max（7~30 天）级长→学成中心主任→书记三级；
- * 超 max 走纸质（系统不受理）。书记=SECRETARY 角色（教师壳），任一级可审+终审；
- * 领导/管理员恒可代批（书记缺位流程不卡死）。
+ * ≤L1（默认 3 天）级长或级部主任一级审批；L1~L2（3~7 天）加学成中心二级；L2~max（7~30 天）加书记三级；
+ * 超 max 走纸质（系统不受理）。级部主任=GRADE_DIRECTOR 岗位绑定（t_grade_binding，初中各年级），审批权与级长一致；
+ * 书记=SECRETARY 角色（教师壳），任一级可审+终审；领导/管理员恒可代批（缺位流程不卡死）。
+ * 生活老师（DORM）登记限时段：leave_dorm_windows（默认 12:00-14:15,21:30-07:30，跨午夜段自动回绕）。
  * 数据同步：班主任/生活老师/门卫/级长及以上（任课教师不可见）；批准后门卫+生活老师+行政（学成中心主任）+
  * 该班任课教师（批44② 知悉通知，仅通知不开放列表）自动抄送。
  * 流转轨迹 t_leave_flow_log（详情页时间线）；门卫离校/返校登记沿用。
@@ -77,12 +79,16 @@ public class StudentLeaveService {
 
     /**
      * 教师代录请假单（班主任本班 / 生活老师全校 / 级长本年级 / 主任·领导·管理员全校）。
-     * 时长自动折算到 0.1 天并决定审批级数；0 级落库即生效并直接同步门卫/生活老师。
+     * 时长自动折算到 0.1 天并决定审批级数（批51 起 1/2/3 级，不再有登记即生效）；
+     * 生活老师限 leave_dorm_windows 时段登记。
      */
     public Map<String, Object> create(UserPrincipal user, Long studentId, String leaveType,
                                       LocalDateTime start, LocalDateTime end, String reason,
                                       List<MultipartFile> photos) {
         Student s = requireCreator(user, studentId);
+        if ("DORM".equals(user.role()) && !inDormWindow(LocalDateTime.now())) {
+            throw new BizException(403, "生活老师仅可在 " + dormWindowText() + " 时段登记请假");
+        }
         if (!StudentLeave.TYPES.contains(leaveType)) {
             throw new BizException(400, "请假类型只能是 病假/事假/其他");
         }
@@ -105,9 +111,8 @@ public class StudentLeaveService {
         if (dur.doubleValue() > max) {
             throw new BizException(400, "请假超过 " + max + " 天须走纸质申请流程，系统不受理");
         }
-        // 批39④ 四级链：0=录入即生效 / 1=级长 / 3=级长→学成中心主任→书记（totalStep=3，无 2 级直跳，
-        // 历史单 totalStep=2 仍按原两级口径走完）
-        int totalStep = dur.doubleValue() <= l1 ? 0 : (dur.doubleValue() <= l2 ? 1 : 3);
+        // 批51 三级链：1=级长/级部主任 / 2=+学成中心 / 3=+书记（历史单 totalStep=2 两级口径不变，step2 语义相同）
+        int totalStep = dur.doubleValue() <= l1 ? 1 : (dur.doubleValue() <= l2 ? 2 : 3);
 
         List<String> objects = uploadPhotos(photos);
         StudentLeave l = new StudentLeave();
@@ -120,14 +125,8 @@ public class StudentLeaveService {
         l.setDurationDays(dur);
         l.setPhotos(objects.isEmpty() ? null : toJson(objects));
         l.setTotalStep(totalStep);
-        l.setCurrentStep(totalStep == 0 ? 0 : 1);
-        if (totalStep == 0) { // 0 级：录入即生效
-            l.setStatus(StudentLeave.APPROVED);
-            l.setApproverId(user.userId());
-            l.setApproveTime(LocalDateTime.now());
-        } else {
-            l.setStatus(StudentLeave.PENDING);
-        }
+        l.setCurrentStep(1);
+        l.setStatus(StudentLeave.PENDING);
         leaveMapper.insert(l);
         flow(l.getId(), LeaveFlowLog.SUBMIT, null, user.userId(), null);
 
@@ -136,12 +135,7 @@ public class StudentLeaveService {
         String className = c == null ? "" : c.getName();
         List<Long> parents = boundParentIds(studentId);
         notificationService.leaveRegister(parents, s.getName(), className, leaveType, range, user.realName());
-        if (totalStep == 0) {
-            notificationService.leaveSyncGuard(s.getName(), className, leaveType, range,
-                    c == null ? null : c.getId(), user.userId());
-        } else {
-            notifyStepTodo(l, s, c);
-        }
+        notifyStepTodo(l, s, c);
         return Map.of("leaveId", l.getId(), "status", l.getStatus(), "totalStep", totalStep);
     }
 
@@ -170,16 +164,19 @@ public class StudentLeaveService {
         return s;
     }
 
-    /** 当前级审批人待办（缺位兜底转上级，流程不卡死；批39④ 第 3 级=书记，缺位转领导/管理员） */
+    /** 当前级审批人待办（缺位兜底转上级，流程不卡死；批51 一级=级长∪级部主任，第 3 级=书记缺位转领导/管理员） */
     private void notifyStepTodo(StudentLeave l, Student s, Clazz c) {
         String className = c == null ? "" : c.getName();
         String range = rangeOf(l);
         if (l.getCurrentStep() == 1) {
-            List<Long> ids = gradeLeaderIds(gradeIdOf(s));
-            String stepName = "级长";
+            Long gradeId = gradeIdOf(s);
+            List<Long> ids = new ArrayList<>(gradeDutyIds(gradeId, GradeBinding.DUTY_GRADE_LEADER));
+            gradeDutyIds(gradeId, GradeBinding.DUTY_GRADE_DIRECTOR).forEach(ids::add);
+            ids = ids.stream().distinct().toList();
+            String stepName = "级长/级部主任";
             if (ids.isEmpty()) {
                 ids = roleIds("DIRECTOR", "LEADER", "ADMIN");
-                stepName = "级长（该年级未绑定级长，已转学成中心主任/领导处理）";
+                stepName = "级长（该年级未绑定级长/级部主任，已转学成中心主任/领导处理）";
             }
             notificationService.leaveTodo(ids, stepName, s.getName(), className, l.getLeaveType(), range);
         } else if (l.getCurrentStep() == 2) {
@@ -473,7 +470,7 @@ public class StudentLeaveService {
             return;
         }
         if (l.getCurrentStep() == 1) {
-            throw new BizException(403, "当前级由级长审批（学成中心主任/书记/领导/管理员可代批）");
+            throw new BizException(403, "当前级由级长或级部主任审批（学成中心主任/书记/领导/管理员可代批）");
         }
         if (l.getCurrentStep() == 2) {
             throw new BizException(403, "当前级由学成中心主任审批（书记/领导/管理员可代批）");
@@ -535,6 +532,72 @@ public class StudentLeaveService {
         }
     }
 
+    /** 生活老师时段窗配置原文：未配置=默认（批51 校方要求 12:00-14:15,21:30-07:30）；显式清空=不限 */
+    private String dormWindowsCfg() {
+        try {
+            SysConfig c = sysConfigMapper.selectById("leave_dorm_windows");
+            return c == null || c.getCfgValue() == null ? "12:00-14:15,21:30-07:30" : c.getCfgValue().trim();
+        } catch (Exception e) {
+            return "12:00-14:15,21:30-07:30";
+        }
+    }
+
+    /** 生活老师登记时段窗（批51）："HH:mm-HH:mm" 逗号分隔多段，start>end 视为跨午夜回绕 */
+    private boolean inDormWindow(LocalDateTime now) {
+        String cfg = dormWindowsCfg();
+        if (cfg.isBlank()) {
+            return true;
+        }
+        LocalTime t = now.toLocalTime();
+        for (String seg : cfg.split(",")) {
+            String[] parts = seg.trim().split("-");
+            if (parts.length != 2) {
+                continue;
+            }
+            try {
+                LocalTime s = LocalTime.parse(parts[0].trim());
+                LocalTime e = LocalTime.parse(parts[1].trim());
+                if (s.isAfter(e) ? (t.isAfter(s) || !t.isAfter(e)) : (!t.isBefore(s) && t.isBefore(e))) {
+                    return true;
+                }
+            } catch (Exception ignore) {
+                // 坏段跳过
+            }
+        }
+        return false;
+    }
+
+    /** 时段窗展示文案（提示生活老师可登记时段；坏段原样展示） */
+    private String dormWindowText() {
+        String cfg = dormWindowsCfg();
+        if (cfg.isBlank()) {
+            return "任意";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (String seg : cfg.split(",")) {
+            String s = seg.trim();
+            if (s.isEmpty()) {
+                continue;
+            }
+            if (sb.length() > 0) {
+                sb.append("、");
+            }
+            String[] parts = s.split("-");
+            if (parts.length == 2) {
+                try {
+                    LocalTime st = LocalTime.parse(parts[0].trim());
+                    LocalTime en = LocalTime.parse(parts[1].trim());
+                    sb.append(st).append("~").append(st.isAfter(en) ? "次日" : "").append(en);
+                    continue;
+                } catch (Exception ignore) {
+                    // 回退原样展示
+                }
+            }
+            sb.append(s);
+        }
+        return sb.length() == 0 ? "任意" : sb.toString();
+    }
+
     private List<Long> boundGradeIds(UserPrincipal user) {
         return gradeBindingMapper.selectList(new LambdaQueryWrapper<GradeBinding>()
                         .eq(GradeBinding::getUserId, user.userId())
@@ -542,13 +605,13 @@ public class StudentLeaveService {
                 .stream().map(GradeBinding::getGradeId).distinct().toList();
     }
 
-    private List<Long> gradeLeaderIds(Long gradeId) {
+    private List<Long> gradeDutyIds(Long gradeId, String duty) {
         if (gradeId == null) {
             return List.of();
         }
         return gradeBindingMapper.selectList(new LambdaQueryWrapper<GradeBinding>()
                         .eq(GradeBinding::getGradeId, gradeId)
-                        .eq(GradeBinding::getDuty, GradeBinding.DUTY_GRADE_LEADER))
+                        .eq(GradeBinding::getDuty, duty))
                 .stream().map(GradeBinding::getUserId).distinct().toList();
     }
 
@@ -604,7 +667,7 @@ public class StudentLeaveService {
         return switch (f.getAction()) {
             case LeaveFlowLog.SUBMIT -> "提交登记";
             case LeaveFlowLog.APPROVE -> (f.getStep() != null && f.getStep() == 3 ? "书记"
-                    : f.getStep() != null && f.getStep() == 2 ? "学成中心主任" : "级长") + "审批通过";
+                    : f.getStep() != null && f.getStep() == 2 ? "学成中心" : "级长/级部主任") + "审批通过";
             case LeaveFlowLog.REJECT -> "驳回";
             case LeaveFlowLog.CANCEL -> "撤销";
             case LeaveFlowLog.REG_LEAVE -> "登记离校";
@@ -687,7 +750,7 @@ public class StudentLeaveService {
             return "已撤销";
         }
         return l.getCurrentStep() != null && l.getCurrentStep() == 3 ? "待书记终审"
-                : l.getCurrentStep() != null && l.getCurrentStep() == 2 ? "待主任审批" : "待级长审批";
+                : l.getCurrentStep() != null && l.getCurrentStep() == 2 ? "待学成中心审批" : "待级长/级部主任审批";
     }
 
     private String rangeOf(StudentLeave l) {

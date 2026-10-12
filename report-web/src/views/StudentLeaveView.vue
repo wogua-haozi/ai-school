@@ -273,12 +273,13 @@ async function doCreate() {
   submitting.value = true
   try {
     const r = await api<{ totalStep: number; status: string }>('/api/student-leave', { method: 'POST', body: fd })
-    showSuccessToast(r.totalStep === 0 ? '已登记生效，家长/门卫/生活老师已收到通知'
-      : r.totalStep === 1 ? '已提交，待级长审批'
-        : r.totalStep >= 3 ? '已提交，待级长+学成中心主任+书记审批' : '已提交，待级长+学成中心主任审批')
+    showSuccessToast(r.totalStep === 1 ? '已提交，待级长/级部主任审批'
+      : r.totalStep === 2 ? '已提交，待级长/级部主任+学成中心审批'
+        : '已提交，待级长/级部主任+学成中心+书记审批')
     cOpen.value = false
-    status.value = r.totalStep === 0 ? 'APPROVED' : 'PENDING'
-    if (status.value === (r.totalStep === 0 ? 'APPROVED' : 'PENDING')) { loaded.value = false; load() }
+    status.value = 'PENDING'
+    loaded.value = false
+    load()
   } finally {
     submitting.value = false
   }
@@ -286,7 +287,7 @@ async function doCreate() {
 
 async function doApprove(r: LeaveRow) {
   await api(`/api/student-leave/${r.id}/approve`, { method: 'PUT' })
-  showSuccessToast(r.currentStep === 2 ? '终审通过，已同步家长/门卫' : '本级已通过')
+  showSuccessToast(r.currentStep === r.totalStep ? '终审通过，已同步家长/门卫' : '本级已通过')
   load()
 }
 

@@ -13,11 +13,18 @@
           <span v-else style="color: var(--el-text-color-placeholder)">未设置</span>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="200">
+      <el-table-column label="级部主任" min-width="140">
+        <template #default="{ row }">
+          <span v-if="directorsOf(row.id).length">{{ directorsOf(row.id).map((b: any) => b.userName).join('、') }}</span>
+          <span v-else style="color: var(--el-text-color-placeholder)">未设置</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="操作" width="260">
         <template #default="{ row }">
           <el-button link type="primary" @click="openGrade(row)">编辑</el-button>
           <el-button link type="danger" @click="removeGrade(row)">删除</el-button>
           <el-button link type="primary" @click="openLeader(row)">级长</el-button>
+          <el-button link type="primary" @click="openDirector(row)">级部主任</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -113,6 +120,31 @@
         <el-button type="primary" :disabled="!leaderPick" @click="addLeader">添加</el-button>
       </template>
     </el-dialog>
+
+    <!-- 级部主任-年级绑定（批51）：请假一级审批与级长同权 -->
+    <el-dialog v-model="directorDialog" :title="`级部主任设置：${directorGrade?.name ?? ''}`" width="440px">
+      <div style="margin-bottom: 10px; color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.6">
+        级部主任在级长之上，请假审批与级长同权（一级审批待办同时通知）。初中各年级设置，小学一般不设。
+        账号角色须先设为「学成中心主任」（账号管理页）。
+      </div>
+      <el-table v-if="directorRows.length" :data="directorRows" size="small" style="margin-bottom: 12px">
+        <el-table-column prop="userName" label="姓名" />
+        <el-table-column label="操作" width="80">
+          <template #default="{ row }">
+            <el-button link type="danger" @click="removeDirector(row)">移除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <div v-else style="margin-bottom: 12px; color: var(--el-text-color-placeholder); font-size: 13px">该年级暂无级部主任</div>
+      <el-select v-model="directorPick" placeholder="选择级部主任账号" filterable style="width: 100%">
+        <el-option v-for="u in directors.filter((u: any) => !directorRows.some((b: any) => b.userId === u.id))"
+          :key="u.id" :label="`${u.realName}（${u.username}）`" :value="u.id" />
+      </el-select>
+      <template #footer>
+        <el-button @click="directorDialog = false">关闭</el-button>
+        <el-button type="primary" :disabled="!directorPick" @click="addDirector">添加</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -137,6 +169,13 @@ const leaderRows = ref<any[]>([])
 const gradeLeaders = ref<any[]>([])
 const leaderPick = ref<number>()
 const bindings = ref<any[]>([])
+// 级部主任-年级绑定（批51）
+const directorDialog = ref(false)
+const directorGrade = ref<any>(null)
+const directorRows = ref<any[]>([])
+const directors = ref<any[]>([])
+const directorPick = ref<number>()
+const directorBindings = ref<any[]>([])
 
 async function load() {
   grades.value = await api<any[]>('/api/admin/grade')
@@ -144,12 +183,19 @@ async function load() {
   const d = await api<{ records: any[] }>('/api/admin/user/list?page=1&size=100')
   teachers.value = d.records.filter((u: any) => u.role === 'HEAD_TEACHER' || u.role === 'TEACHER')
   bindings.value = await api<any[]>('/api/admin/grade-binding')
+  directorBindings.value = await api<any[]>('/api/admin/grade-binding?duty=GRADE_DIRECTOR')
   const gl = await api<{ records: any[] }>('/api/admin/user/list?role=GRADE_LEADER&page=1&size=1000')
   gradeLeaders.value = gl.records
+  const dr = await api<{ records: any[] }>('/api/admin/user/list?role=DIRECTOR&page=1&size=1000')
+  directors.value = dr.records
 }
 
 function leadersOf(gradeId: number) {
   return bindings.value.filter((b: any) => b.gradeId === gradeId)
+}
+
+function directorsOf(gradeId: number) {
+  return directorBindings.value.filter((b: any) => b.gradeId === gradeId)
 }
 
 function openLeader(row: any) {
@@ -176,6 +222,32 @@ async function removeLeader(row: any) {
   ElMessage.success('已移除')
   await load()
   leaderRows.value = leadersOf(leaderGrade.value?.id)
+}
+
+function openDirector(row: any) {
+  directorGrade.value = row
+  directorRows.value = directorsOf(row.id)
+  directorPick.value = undefined
+  directorDialog.value = true
+}
+
+async function addDirector() {
+  if (!directorPick.value || !directorGrade.value) return
+  await api('/api/admin/grade-binding', {
+    method: 'POST',
+    json: { userId: directorPick.value, gradeId: directorGrade.value.id, duty: 'GRADE_DIRECTOR' },
+  })
+  ElMessage.success('已绑定')
+  directorPick.value = undefined
+  await load()
+  directorRows.value = directorsOf(directorGrade.value.id)
+}
+
+async function removeDirector(row: any) {
+  await api(`/api/admin/grade-binding/${row.id}`, { method: 'DELETE' })
+  ElMessage.success('已移除')
+  await load()
+  directorRows.value = directorsOf(directorGrade.value?.id)
 }
 
 function openGrade(row?: any) {
