@@ -8,8 +8,9 @@
       <button class="start-btn goods" type="button" @click="openNew('GOODS')">
         <van-icon name="shopping-cart-o" /><span>物资申领</span>
       </button>
-      <button class="start-btn venue" type="button" @click="openNew('VENUE')">
-        <van-icon name="location-o" /><span>场地申请</span>
+      <!-- 批53③ 场地预约独立成页（时段格+会议总览），此处直达 -->
+      <button class="start-btn venue" type="button" @click="$router.push('/venue')">
+        <van-icon name="location-o" /><span>场地预约</span>
       </button>
       <!-- 批43① 采购申请（钉钉流程移植：五级链+附件+多组明细） -->
       <button class="start-btn purchase" type="button" @click="openNew('PURCHASE')">
@@ -51,7 +52,7 @@
             <button class="f-chip" :class="{ on: procTab === 'APPROVED' }" type="button" @click="procTab = 'APPROVED'">待领取核销</button>
             <button class="f-chip" :class="{ on: procTab === 'ISSUED' }" type="button" @click="procTab = 'ISSUED'">已核销</button>
             <span class="spacer"></span>
-            <button class="add-btn" type="button" @click="openManage">字典 / 入库</button>
+            <button class="add-btn" type="button" @click="openManage">物资 / 入库</button>
           </div>
           <p class="f-tip">申请人领取物资后在此核销出库（核销时才扣库存）；库存不足时先入库再核销</p>
         </div>
@@ -86,20 +87,6 @@
             @click="openSealCandidates" />
           <van-field :model-value="useDate" is-link readonly label="使用日期" placeholder="选择日期（可选）"
             @click="openDate('use')" />
-        </template>
-        <template v-else-if="newType === 'VENUE'">
-          <van-field :model-value="venueName" is-link readonly label="场地" placeholder="选择场地（必选）"
-            @click="venueOpen = true" />
-          <van-field :model-value="venueDate" is-link readonly label="使用日期" placeholder="必选"
-            @click="openDate('venue')" />
-          <!-- 批52② 起止时间（半小时粒度，同场地时段重叠无法提交） -->
-          <van-field :model-value="venueStart" is-link readonly label="开始时间" placeholder="必选"
-            @click="openTime('vs')" />
-          <van-field :model-value="venueEnd" is-link readonly label="结束时间" placeholder="必选"
-            @click="openTime('ve')" />
-          <van-field v-model="newTitle" type="textarea" rows="2" autosize label="事由"
-            placeholder="例如：班会课使用报告厅" />
-          <p v-if="!venues.length" class="goods-tip">暂无可申请场地，请管理员先在管理端维护场地字典</p>
         </template>
         <template v-else-if="newType === 'PURCHASE'">
           <van-field v-model="newTitle" type="textarea" rows="2" autosize label="申请事由"
@@ -152,7 +139,7 @@
           <button class="add-line" type="button" @click="newLines.push({ goodsId: 0, name: '', qty: '' })">
             + 添加物资
           </button>
-          <p v-if="!goods.length" class="goods-tip">暂无可申领物资，请管理员先在管理端添加物资字典</p>
+          <p v-if="!goods.length" class="goods-tip">暂无可申领物资，请联系管理员在管理端添加</p>
         </template>
         <van-button round block type="primary" class="submit" :loading="submitting" @click="doSubmit">提交申请</van-button>
       </div>
@@ -260,19 +247,10 @@
     <van-popup v-model:show="goodsOpen" position="bottom" round>
       <van-picker title="选择物资" :columns="goodsColumns" @confirm="onGoods" @cancel="goodsOpen = false" />
     </van-popup>
-    <van-popup v-model:show="venueOpen" position="bottom" round>
-      <van-picker title="选择场地" :columns="venueColumns" @confirm="onVenue" @cancel="venueOpen = false" />
-    </van-popup>
     <van-popup v-model:show="dateOpen" position="bottom" round>
       <van-date-picker :title="dateTitle"
         v-model="dateBuf" :columns-type="['year', 'month', 'day']"
         :min-date="minDate" :max-date="maxDate" @confirm="onDateOk" @cancel="dateOpen = false" />
-    </van-popup>
-    <!-- 批52② 场地起止时间（06:00~23:00，分钟 00/30 步进） -->
-    <van-popup v-model:show="timeOpen" position="bottom" round>
-      <van-time-picker :title="timeTitle" v-model="timeBuf" :columns-type="['hour', 'minute']"
-        :filter="halfHourFilter" min-time="06:00" max-time="23:00"
-        @confirm="onTimeOk" @cancel="timeOpen = false" />
     </van-popup>
 
     <!-- 批49① 验收人选择：搜索+多选（同配置或签口径，任一人验收即过级）；不选=申请人本人 -->
@@ -315,7 +293,7 @@
 
     <!-- 招采字典/入库/流水（批33；端点与管理端共用，招采已放行） -->
     <van-popup v-model:show="manageOpen" position="bottom" round :style="{ maxHeight: '88%' }" class="pop">
-      <div class="p-head"><b>物资字典与库存</b><small>新增物资 · 入库登记 · 出入库流水</small></div>
+      <div class="p-head"><b>物资与库存</b><small>新增物资 · 入库登记 · 出入库流水</small></div>
       <div class="p-body">
         <div class="app-sec" style="margin: 0 0 4px">新增物资</div>
         <van-field v-model="newGoods.name" label="名称" placeholder="例如：A4复印纸" input-align="right" />
@@ -330,7 +308,7 @@
         <van-field v-model="stockForm.note" label="备注" placeholder="例如：10月采购到货（可选）" input-align="right" />
         <van-button round block size="small" type="primary" class="mini-btn" :loading="stocking" @click="doStockIn">确认入库</van-button>
 
-        <div class="app-sec" style="margin: 14px 0 4px">库存字典</div>
+        <div class="app-sec" style="margin: 14px 0 4px">库存清单</div>
         <div class="dict">
           <p v-for="g in goodsAdmin" :key="g.id">
             <span>{{ g.name }}</span>
@@ -401,38 +379,10 @@ const pickLine = ref(0)
 const newLines = ref<{ goodsId: number; name: string; qty: string }[]>([{ goodsId: 0, name: '', qty: '' }])
 const submitting = ref(false)
 
-/* 日期三字段共用一个 picker（use=公章使用日期 / venue=场地使用日期 / expect=采购期望交付） */
+/* 日期两字段共用一个 picker（use=公章使用日期 / expect=采购期望交付）；场地预约已独立成页（批53③） */
 const dateOpen = ref(false)
-const dateField = ref<'use' | 'venue' | 'expect'>('use')
+const dateField = ref<'use' | 'expect'>('use')
 const dateBuf = ref<string[]>([])
-const venues = ref<{ id: number; name: string; location: string; capacity: number | null }[]>([])
-const venueOpen = ref(false)
-const venueId = ref(0)
-const venueName = ref('')
-const venueDate = ref('')
-
-/* 批52② 场地起止时间（半小时粒度，两个字段共用一个 time-picker；空 model 须预置默认值，同日期 picker 教训） */
-const timeOpen = ref(false)
-const timeField = ref<'vs' | 've'>('vs')
-const timeBuf = ref<string[]>(['08', '00'])
-const venueStart = ref('')
-const venueEnd = ref('')
-const timeTitle = computed(() => (timeField.value === 'vs' ? '开始时间' : '结束时间'))
-// Vant TimePicker filter 的选项是 {text,value} 对象（非数字），按 value 取半点
-const halfHourFilter = (type: string, options: unknown[]) =>
-  type === 'minute' ? options.filter((o) => Number((o as { value?: unknown })?.value ?? o) % 30 === 0) : options
-function openTime(field: 'vs' | 've') {
-  timeField.value = field
-  const v = field === 'vs' ? venueStart.value : venueEnd.value
-  timeBuf.value = v ? v.split(':') : field === 'vs' ? ['08', '00'] : ['09', '00']
-  timeOpen.value = true
-}
-function onTimeOk() {
-  const v = timeBuf.value.join(':')
-  if (timeField.value === 'vs') venueStart.value = v
-  else venueEnd.value = v
-  timeOpen.value = false
-}
 
 // ───────── 批43① 采购申请 ─────────
 const purExpectDate = ref('')
@@ -519,23 +469,19 @@ const maxDate = new Date(2030, 11, 31)
 const goodsColumns = computed(() => goods.value.map((g) => ({
   text: `${g.name}（库存 ${g.stock}${g.unit}）`, value: g.id,
 })))
-const venueColumns = computed(() => venues.value.map((v) => ({
-  text: v.location ? `${v.name}（${v.location}）` : v.name, value: v.id,
-})))
 
 function typeLabel(t: string) {
-  return ({ SEAL: '公章使用申请', GOODS: '物资申领', LEAVE: '教师请假', VENUE: '场地申请', PURCHASE: '采购申请' } as Record<string, string>)[t] || t
+  return ({ SEAL: '公章使用申请', GOODS: '物资申领', LEAVE: '教师请假', VENUE: '场地预约', PURCHASE: '采购申请' } as Record<string, string>)[t] || t
 }
 function tagOf(t: string) {
   return ({ SEAL: 'primary', GOODS: 'warning', LEAVE: 'success', VENUE: 'default', PURCHASE: 'primary' } as Record<string, string>)[t] || 'primary'
 }
 const dateTitle = computed(() =>
-  ({ use: '使用日期', venue: '使用日期', expect: '期望交付日期' } as Record<string, string>)[dateField.value])
+  ({ use: '使用日期', expect: '期望交付日期' } as Record<string, string>)[dateField.value])
 
-function openDate(field: 'use' | 'venue' | 'expect') {
+function openDate(field: 'use' | 'expect') {
   dateField.value = field
-  const v = field === 'use' ? useDate.value
-    : field === 'expect' ? purExpectDate.value : venueDate.value
+  const v = field === 'use' ? useDate.value : purExpectDate.value
   if (v) {
     dateBuf.value = v.split('-')
   } else { // 空 model 的 van-date-picker 会落 min-date（2020），须预置今天
@@ -547,18 +493,8 @@ function openDate(field: 'use' | 'venue' | 'expect') {
 function onDateOk() {
   const v = dateBuf.value.join('-')
   if (dateField.value === 'use') useDate.value = v
-  else if (dateField.value === 'expect') purExpectDate.value = v
-  else venueDate.value = v
+  else purExpectDate.value = v
   dateOpen.value = false
-}
-
-function onVenue(ev: { selectedOptions: { text: string; value: number }[] }) {
-  const opt = ev.selectedOptions?.[0]
-  if (opt) {
-    venueId.value = opt.value
-    venueName.value = opt.text
-  }
-  venueOpen.value = false
 }
 
 function openNew(type: string) {
@@ -566,11 +502,6 @@ function openNew(type: string) {
   newTitle.value = ''
   useDate.value = ''
   sealL1Ids.value = [] // 批52① 公章一级审批人随单重选
-  venueId.value = 0
-  venueName.value = ''
-  venueDate.value = ''
-  venueStart.value = ''
-  venueEnd.value = ''
   newLines.value = [{ goodsId: 0, name: '', qty: '' }]
   purExpectDate.value = ''
   purPlace.value = ''
@@ -580,9 +511,6 @@ function openNew(type: string) {
   acceptorIds.value = []
   if (type === 'GOODS' && !goods.value.length) {
     api<GoodsOpt[]>('/api/oa/goods').then((d) => (goods.value = d)).catch(() => {})
-  }
-  if (type === 'VENUE' && !venues.value.length) {
-    api<typeof venues.value>('/api/venue/list').then((d) => (venues.value = d)).catch(() => {})
   }
   newOpen.value = true
 }
@@ -604,20 +532,6 @@ async function doSubmit() {
     submitting.value = true
     try {
       await api('/api/oa/submit', { method: 'POST', json: { formType: 'SEAL', title: newTitle.value, useDate: useDate.value, l1ApproverIds: sealL1Ids.value } })
-    } finally { submitting.value = false }
-  } else if (newType.value === 'VENUE') {
-    if (!venueId.value) { showToast('请选择场地'); return }
-    if (!venueDate.value) { showToast('请选择使用日期'); return }
-    if (!venueStart.value) { showToast('请选择开始时间'); return }
-    if (!venueEnd.value) { showToast('请选择结束时间'); return }
-    if (venueEnd.value <= venueStart.value) { showToast('结束时间须晚于开始时间'); return }
-    if (!newTitle.value.trim()) { showToast('请填写申请事由'); return }
-    submitting.value = true
-    try {
-      await api('/api/oa/submit', {
-        method: 'POST',
-        json: { formType: 'VENUE', title: newTitle.value, venueId: venueId.value, useDate: venueDate.value, startTime: venueStart.value, endTime: venueEnd.value },
-      })
     } finally { submitting.value = false }
   } else if (newType.value === 'PURCHASE') {
     if (!newTitle.value.trim()) { showToast('请填写申请事由'); return }

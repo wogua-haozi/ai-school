@@ -144,6 +144,7 @@ const sections = computed(() => {
     ] },
     { label: '校园事务', items: [
       { name: '通知公告', icon: 'volume-o', to: '/notices', bg: '#CA8A04' },
+      { name: '场地预约', icon: 'location-o', to: '/venue', bg: '#1E40AF' },
     ] },
     { label: '我的成长', items: [
       { name: '我的成长', icon: 'award-o', to: '/my-growth', bg: '#0F766E' },

@@ -47,6 +47,9 @@ const router = createRouter({
     { path: '/conduct-rules', component: () => import('../views/ConductRulesView.vue'), meta: { layout: 'sub', title: '德育规范' } },
     // 行政办公（批9）：公章三级审批+物资申领（OA 引擎）；批10 加教师请假
     { path: '/oa', component: () => import('../views/OaView.vue'), meta: { layout: 'sub', title: '行政办公' } },
+    // 场地预约（批53③ 重构）：立即预约列表 + 会议总览；详情页半小时格连选发起申请
+    { path: '/venue', component: () => import('../views/VenueView.vue'), meta: { layout: 'sub', title: '场地预约' } },
+    { path: '/venue/:id', component: () => import('../views/VenueDetailView.vue'), meta: { layout: 'sub', title: '场地详情' } },
     // 报修（批10）：文字+拍照凭证，工单直达管理端
     { path: '/repair', component: () => import('../views/RepairView.vue'), meta: { layout: 'sub', title: '报修' } },
     // 导师谈心（批11）：教师对可见班级学生，管理端全量

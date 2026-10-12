@@ -19,6 +19,7 @@ import java.util.Map;
 public class AuthController {
 
     private final AuthService authService;
+    private final com.aischool.server.mapper.UserMapper userMapper;
 
     @Data
     public static class LoginReq {
@@ -96,9 +97,12 @@ public class AuthController {
     @GetMapping("/me")
     public ApiResponse<Map<String, Object>> me() {
         var user = AuthUtil.current();
+        // 批53⑥ 联系电话预填（场地预约确认层读）；Map.of 不容 null，phone 缺失给 ""
+        com.aischool.server.entity.User u = userMapper.selectById(user.userId());
         return ApiResponse.ok(Map.of(
                 "id", user.userId(), "username", user.username(),
                 "realName", user.realName(), "role", user.role(),
+                "phone", u == null || u.getPhone() == null ? "" : u.getPhone(),
                 "mustChangePassword", user.mustChangePwd()));
     }
 

@@ -170,9 +170,10 @@ public class AdminOaController {
         return ApiResponse.ok(oaService.allList(formType, status));
     }
 
-    // ---- 场地字典（批11） ----
+    // ---- 场地字典（批11；批53③ 加照片/设备） ----
 
     private final VenueMapper venueMapper;
+    private final com.aischool.server.service.report.PdfStoreService pdfStore;
 
     @GetMapping("/venue")
     public ApiResponse<List<Map<String, Object>>> venue() {
@@ -185,11 +186,13 @@ public class AdminOaController {
                     m.put("location", v.getLocation() == null ? "" : v.getLocation());
                     m.put("capacity", v.getCapacity());
                     m.put("status", v.getStatus());
+                    m.put("photoUrl", v.getPhoto() == null ? null : "/api/venue/photo/" + v.getId());
+                    m.put("equip", v.getEquip() == null ? "" : v.getEquip());
                     return m;
                 }).toList());
     }
 
-    /** 新增/编辑（id 空=新增；名称唯一） */
+    /** 新增/编辑（id 空=新增；名称唯一）。photo 由 /venue/{id}/photo 单独管理，此处不碰 */
     @PostMapping("/venue")
     public ApiResponse<Void> saveVenue(@Validated @RequestBody VenueReq req) {
         permissionService.checkAdminAccess("只有管理员可管理场地");
@@ -200,6 +203,9 @@ public class AdminOaController {
         v.setName(req.getName().trim());
         v.setLocation(req.getLocation());
         v.setCapacity(req.getCapacity());
+        v.setEquip(req.getEquip() == null ? "" : String.join("、",
+                java.util.Arrays.stream(req.getEquip().split("[、,，]")).map(String::trim)
+                        .filter(s -> !s.isEmpty()).distinct().toList()));
         if (req.getId() == null) {
             v.setStatus(1);
         }
@@ -213,6 +219,41 @@ public class AdminOaController {
             throw new BizException(400, "已存在同名场地");
         }
         return ApiResponse.ok();
+    }
+
+    /** 场地照片上传（批53③）：jpg/jpeg/png ≤10MB，存 MinIO venue/{id}/{uuid}.{ext}，覆盖时删旧对象 */
+    @PostMapping("/venue/{id}/photo")
+    public ApiResponse<Map<String, Object>> venuePhoto(@PathVariable Long id,
+                                                       @RequestParam("photo") org.springframework.web.multipart.MultipartFile photo) {
+        permissionService.checkAdminAccess("只有管理员可管理场地");
+        Venue v = venueMapper.selectById(id);
+        if (v == null) {
+            throw new BizException(404, "场地不存在");
+        }
+        if (photo == null || photo.isEmpty()) {
+            throw new BizException(400, "请选择照片文件");
+        }
+        if (photo.getSize() > 10L * 1024 * 1024) {
+            throw new BizException(400, "照片不能超过 10MB");
+        }
+        String original = photo.getOriginalFilename() == null ? "" : photo.getOriginalFilename();
+        String ext = original.contains(".")
+                ? original.substring(original.lastIndexOf('.') + 1).toLowerCase(java.util.Locale.ROOT) : "";
+        if (!ext.equals("jpg") && !ext.equals("jpeg") && !ext.equals("png")) {
+            throw new BizException(400, "仅支持 jpg/jpeg/png 格式");
+        }
+        String objectName = "venue/" + id + "/" + java.util.UUID.randomUUID() + "." + ext;
+        try (java.io.InputStream in = photo.getInputStream()) {
+            pdfStore.upload(objectName, in, photo.getSize(), photo.getContentType());
+        } catch (Exception e) {
+            throw new BizException(400, "照片上传失败");
+        }
+        if (v.getPhoto() != null) {
+            pdfStore.delete(v.getPhoto()); // 换图删旧对象
+        }
+        v.setPhoto(objectName);
+        venueMapper.updateById(v);
+        return ApiResponse.ok(Map.of("photoUrl", "/api/venue/photo/" + id));
     }
 
     @PutMapping("/venue/{id}/status")
@@ -234,6 +275,7 @@ public class AdminOaController {
         private String name;
         private String location;
         private Integer capacity;
+        private String equip; // 批53③ 设备清单（顿号分隔；photo 走 /venue/{id}/photo）
     }
 
     // ---- 物资字典（批33 起招采可维护：甲方自助添加新物资） ----

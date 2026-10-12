@@ -293,6 +293,9 @@ public class OaService {
             detail.put("startTime", req.getStartTime());
             detail.put("endTime", req.getEndTime());
             detail.put("reason", req.getTitle().trim());
+            // 批53⑥ 联系电话快照当前教师账号手机号（会议总览展示；前端不传不可伪造）
+            User me = userMapper.selectById(user.userId());
+            detail.put("phone", me == null || me.getPhone() == null ? "" : me.getPhone().trim());
             form.setTitle(v.getName() + "·" + req.getUseDate() + " " + req.getStartTime() + "-" + req.getEndTime());
             form.setDetail(toJson(detail));
         } else if (type.equals(OaForm.TYPE_PURCHASE)) {
@@ -783,6 +786,60 @@ public class OaService {
             return null;
         }
         return Integer.parseInt(s.substring(0, 2)) * 60 + Integer.parseInt(s.substring(3));
+    }
+
+    // ───────── 批53③ 场地日历（预约页时段条 / 会议总览共用） ─────────
+
+    /** venueId → 当日占用段（待审/已批）+ 累计已批次数（全日期） */
+    @Data
+    public static class VenueDayStat {
+        private List<Map<String, Object>> bookings = new ArrayList<>();
+        private long totalCount;
+    }
+
+    /**
+     * 批53③ 场地日历：待审（黄）/已批（青绿）均占位，撤回/驳回自然消失。
+     * 联系电话=单上快照（批53⑥ 起有）回退当前账号手机号；旧单无起止时间=全天（start/end 为 null）。
+     */
+    public Map<Long, VenueDayStat> venueDayStats(String useDate) {
+        List<OaForm> held = formMapper.selectList(new LambdaQueryWrapper<OaForm>()
+                .eq(OaForm::getFormType, OaForm.TYPE_VENUE)
+                .in(OaForm::getStatus, List.of(OaForm.PENDING, OaForm.APPROVED)));
+        Map<Long, User> users = held.isEmpty() ? Map.of()
+                : userMapper.selectBatchIds(held.stream().map(OaForm::getApplicantId).distinct().toList())
+                        .stream().collect(Collectors.toMap(User::getId, u -> u, (a, b) -> a));
+        Map<Long, VenueDayStat> out = new java.util.HashMap<>();
+        for (OaForm f : held) {
+            Map<String, Object> d = parseObj(f.getDetail());
+            Object vid = d.get("venueId");
+            if (!(vid instanceof Number n)) {
+                continue;
+            }
+            VenueDayStat st = out.computeIfAbsent(n.longValue(), k -> new VenueDayStat());
+            if (OaForm.APPROVED.equals(f.getStatus())) {
+                st.setTotalCount(st.getTotalCount() + 1); // 累计已批：不限日期
+            }
+            if (!useDate.equals(d.get("useDate"))) {
+                continue;
+            }
+            User u = users.get(f.getApplicantId());
+            String phone = d.get("phone") instanceof String p && !p.isBlank() ? p
+                    : (u == null ? "" : u.getPhone() == null ? "" : u.getPhone());
+            Map<String, Object> b = new LinkedHashMap<>();
+            b.put("formId", f.getId());
+            b.put("start", d.get("startTime"));
+            b.put("end", d.get("endTime"));
+            b.put("state", f.getStatus());
+            b.put("applicantName", u == null ? "" : u.getRealName());
+            b.put("reason", d.get("reason") == null ? "" : String.valueOf(d.get("reason")));
+            b.put("phone", phone == null ? "" : phone);
+            st.getBookings().add(b);
+        }
+        for (VenueDayStat st : out.values()) {
+            st.getBookings().sort(java.util.Comparator.comparing(b ->
+                    b.get("start") == null ? "" : String.valueOf(b.get("start"))));
+        }
+        return out;
     }
 
     /** 提交入参 HH:mm 校验：格式正确 + 00/30 半小时粒度 + 06:00~23:00 范围，返回当日分钟数（批52②） */
