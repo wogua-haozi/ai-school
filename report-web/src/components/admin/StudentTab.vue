@@ -39,7 +39,7 @@
       <el-table-column prop="guardianPhone" label="家长电话" width="130" />
       <el-table-column label="宿舍" width="150">
         <template #default="{ row }">
-          {{ row.dormBuilding ? `${row.dormBuilding}${row.dormRoom}${row.dormBed ? ' / ' + row.dormBed + '床' : ''}` : '' }}
+          {{ dormText(row) }}
         </template>
       </el-table-column>
       <el-table-column label="操作" width="130">
@@ -146,6 +146,12 @@ const photoFile = ref<File | null>(null)
 const importDialog = ref(false)
 const importFile = ref<File | null>(null)
 const importing = ref(false)
+/* 宿舍三列拼装：部分缺格不过滤会漏出 null 字样 */
+function dormText(row: any) {
+  const b = row.dormBuilding, r = row.dormRoom, d = row.dormBed
+  if (!b && !r && !d) return ''
+  return [b, r].filter(Boolean).join('') + (d ? ` / ${d}床` : '')
+}
 const importResult = ref<{ inserted: number; failed: number; errors: { row: number; reason: string }[] } | null>(null)
 
 function className(id: number) {

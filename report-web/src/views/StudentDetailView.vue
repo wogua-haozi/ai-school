@@ -51,7 +51,7 @@
       <van-cell title="状态" :value="stu.status || '—'" />
       <van-cell title="家长" :value="stu.guardianName || '—'" />
       <van-cell title="联系电话" :value="stu.guardianPhone || '—'" />
-      <van-cell title="宿舍" :value="stu.dormBuilding ? `${stu.dormBuilding} ${stu.dormRoom}${stu.dormBed ? ' / ' + stu.dormBed + '床' : ''}` : '—'" />
+      <van-cell title="宿舍" :value="dormText" />
       <div class="barcode" aria-hidden="true"><i v-for="n in 24" :key="n" :style="{ opacity: n % 3 ? .8 : .35 }"></i></div>
     </div>
 
@@ -108,6 +108,12 @@ const router = useRouter()
 
 interface Stu { name?: string; gender?: string; studentNo?: string; classId?: number; status?: string; guardianName?: string; guardianPhone?: string; dormBuilding?: string; dormRoom?: string; dormBed?: string; editable?: boolean }
 const stu = ref<Stu>({})
+/* 宿舍三列拼装：全空=未安排住宿（走读/漏录），部分缺格不再漏出 null 字样 */
+const dormText = computed(() => {
+  const b = stu.value.dormBuilding, r = stu.value.dormRoom, d = stu.value.dormBed
+  if (!b && !r && !d) return '未安排住宿'
+  return [b, r].filter(Boolean).join(' ') + (d ? ` / ${d}床` : '')
+})
 const className = ref('')
 const termId = ref<number>()
 const moments = ref<{ id: number; photoUrl: string | null; sceneTag: string; note?: string; source?: string }[]>([])
