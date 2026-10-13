@@ -30,7 +30,12 @@
             <div class="v-slots">
               <span v-for="(c, i) in slotClasses(v)" :key="i" class="sg" :class="c"></span>
             </div>
-            <div class="v-scale"><span>6</span><span>9</span><span>12</span><span>15</span><span>18</span><span>21</span><span>23</span></div>
+            <!-- 批56④ 刻度对齐：与 34 格同构（数字=整点小时，对齐该小时起始格左缘，末格 22:30） -->
+            <div class="v-scale">
+              <template v-for="h in 17" :key="h">
+                <span>{{ h + 5 }}</span><i />
+              </template>
+            </div>
           </div>
         </div>
         <div v-if="loaded && !filtered.length" class="app-card empty-card">暂无匹配场地</div>
@@ -263,7 +268,9 @@ onMounted(() => {
 .sg { flex: 1; height: 12px; background: #EDF1F5; }
 .sg.ok { background: #10B981; }
 .sg.pend { background: #FBBF24; }
-.v-scale { display: flex; justify-content: space-between; margin-top: 3px; font-size: 9px; color: var(--app-text-3); }
+/* 批56④ 刻度与 34 格同构：grid 34 列（与 v-slots 的 flex 34 格等宽），数字落整点格位 */
+.v-scale { display: grid; grid-template-columns: repeat(34, 1fr); gap: 1px; margin-top: 3px;
+  font-size: 9px; color: var(--app-text-3); }
 .empty-card { margin-top: 12px; padding: 26px 0; text-align: center; font-size: 13px; color: var(--app-text-3); }
 
 /* 会议总览 */

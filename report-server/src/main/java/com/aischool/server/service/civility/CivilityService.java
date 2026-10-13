@@ -7,7 +7,6 @@ import com.aischool.server.entity.ClassScore;
 import com.aischool.server.entity.Clazz;
 import com.aischool.server.entity.Evaluation;
 import com.aischool.server.entity.Grade;
-import com.aischool.server.entity.GradeBinding;
 import com.aischool.server.entity.Student;
 import com.aischool.server.entity.SysConfig;
 import com.aischool.server.entity.User;
@@ -16,12 +15,12 @@ import com.aischool.server.mapper.CivilityScoreMapper;
 import com.aischool.server.mapper.ClassScoreMapper;
 import com.aischool.server.mapper.ClazzMapper;
 import com.aischool.server.mapper.EvaluationMapper;
-import com.aischool.server.mapper.GradeBindingMapper;
 import com.aischool.server.mapper.GradeMapper;
 import com.aischool.server.mapper.StudentMapper;
 import com.aischool.server.mapper.SysConfigMapper;
 import com.aischool.server.mapper.UserMapper;
 import com.aischool.server.security.AuthUtil;
+import com.aischool.server.service.eval.DutyService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
@@ -69,11 +68,11 @@ public class CivilityService {
     private final ClassScoreMapper classScoreMapper;
     private final ClazzMapper clazzMapper;
     private final GradeMapper gradeMapper;
-    private final GradeBindingMapper gradeBindingMapper;
     private final UserMapper userMapper;
     private final StudentMapper studentMapper;
     private final EvaluationMapper evaluationMapper;
     private final SysConfigMapper sysConfigMapper;
+    private final DutyService dutyService;
 
     /** 批39⑥ 切换日（yyyy-MM-dd）；空=未切换，排名仍按旧打分口径 */
     private LocalDate evalFrom() {
@@ -149,52 +148,29 @@ public class CivilityService {
 
     // ───────── 批43：班级整体加减分（进文明班评比，不落具体学生、不进个人档案） ─────────
 
-    /** 班级记分写权限（拍板口径）：班主任本班 / 级长（绑定年级）/ 学成中心主任 / 领导 / 管理员。
-     *  批51b 挂名即班主任：挂名者不问账号角色 */
-    private void checkClassScoreAllowed(Clazz c) {
-        var user = com.aischool.server.security.AuthUtil.current();
+    /** 班级记分写权限（批56③ 拍板）：当日值日老师可记任意班 + 管理员/领导兜底。
+     *  原班主任本班/级长/学成中心主任口径废止（对齐原软件德育巡检玩法——值日老师记分）；
+     *  值日排班由校方在管理端「值班排班」维护，未排班时除管理员/领导外无人可记。 */
+    private void checkClassScoreAllowed() {
+        var user = AuthUtil.current();
         String role = user.role();
-        if ("ADMIN".equals(role) || "LEADER".equals(role) || "DIRECTOR".equals(role)) {
+        if ("ADMIN".equals(role) || "LEADER".equals(role)) {
             return;
         }
-        if (user.userId().equals(c.getHeadTeacherId())) {
+        if (dutyService.isOnDuty(user.userId(), LocalDate.now())) {
             return;
         }
-        if ("GRADE_LEADER".equals(role)) {
-            List<Long> bound = gradeBindingMapper.selectList(new LambdaQueryWrapper<GradeBinding>()
-                            .eq(GradeBinding::getUserId, user.userId())
-                            .eq(GradeBinding::getDuty, GradeBinding.DUTY_GRADE_LEADER))
-                    .stream().map(GradeBinding::getGradeId).distinct().toList();
-            if (bound.contains(c.getGradeId())) {
-                return;
-            }
-        }
-        throw new BizException(403, "班级记分限班主任（本班）、级长、学成中心主任或管理员");
+        throw new BizException(403, "班级记分限当日值日老师（或管理员）——值日排班由学校在管理端配置");
     }
 
-    /** 可记分班级列表（前端下拉）：班主任=挂名班；级长=绑定年级全部班∪挂名班；主任/领导/管理员=全校（批51b 挂名即认） */
+    /** 可记分班级列表（前端下拉）：管理员/领导/当日值日老师=全校；其余 403（批56③ 值日口径，
+     *  前端探测到 403 即不显示「班级记分」切换） */
     public List<Map<String, Object>> classScoreClasses() {
-        var user = com.aischool.server.security.AuthUtil.current();
-        String role = user.role();
+        checkClassScoreAllowed();
         List<Clazz> all = clazzMapper.selectList(new LambdaQueryWrapper<Clazz>().orderByAsc(Clazz::getId));
-        java.util.function.Predicate<Clazz> can;
-        if ("ADMIN".equals(role) || "LEADER".equals(role) || "DIRECTOR".equals(role)) {
-            can = c -> true;
-        } else if ("HEAD_TEACHER".equals(role) || "TEACHER".equals(role) || "GRADE_LEADER".equals(role)
-                || "SECRETARY".equals(role) || "DORM".equals(role) || "PROCUREMENT".equals(role)) {
-            Set<Long> bound = "GRADE_LEADER".equals(role)
-                    ? gradeBindingMapper.selectList(new LambdaQueryWrapper<GradeBinding>()
-                            .eq(GradeBinding::getUserId, user.userId())
-                            .eq(GradeBinding::getDuty, GradeBinding.DUTY_GRADE_LEADER))
-                    .stream().map(GradeBinding::getGradeId).collect(Collectors.toSet())
-                    : java.util.Set.of();
-            can = c -> user.userId().equals(c.getHeadTeacherId()) || bound.contains(c.getGradeId());
-        } else {
-            throw new BizException(403, "班级记分限班主任（本班）、级长、学成中心主任或管理员");
-        }
         Map<Long, String> gradeNames = gradeMapper.selectList(null).stream()
                 .collect(Collectors.toMap(Grade::getId, Grade::getName, (a, b) -> a));
-        return all.stream().filter(can).<Map<String, Object>>map(c -> {
+        return all.stream().<Map<String, Object>>map(c -> {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("id", c.getId());
             m.put("name", c.getName());
@@ -221,7 +197,7 @@ public class CivilityService {
         if (c == null) {
             throw new BizException(404, "班级不存在");
         }
-        checkClassScoreAllowed(c);
+        checkClassScoreAllowed();
         LocalDate date;
         try {
             date = LocalDate.parse(req.getScoreDate() == null ? "" : req.getScoreDate().trim());
@@ -268,7 +244,7 @@ public class CivilityService {
         if (c == null) {
             throw new BizException(404, "班级不存在");
         }
-        checkClassScoreAllowed(c);
+        checkClassScoreAllowed();
         List<ClassScore> rows = classScoreMapper.selectList(new LambdaQueryWrapper<ClassScore>()
                 .eq(ClassScore::getClassId, classId)
                 .ge(from != null, ClassScore::getScoreDate, from)

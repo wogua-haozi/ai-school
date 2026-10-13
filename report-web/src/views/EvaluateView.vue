@@ -291,7 +291,8 @@ function defaultEvalTime() {
 
 async function init() {
   const [cs, ts, gs] = await Promise.all([
-    api<{ id: number; name: string }[]>('/api/meta/my-classes'),
+    // 批56③ 素养评价全体老师：班级下拉用全校源（my-classes 按任课/挂名过滤会挡住无关班）
+    api<{ id: number; name: string }[]>('/api/meta/all-classes'),
     api<any[]>('/api/meta/terms'),
     api<{ id: number; name: string }[]>('/api/meta/grids'),
   ])
@@ -336,10 +337,11 @@ let listSeq = 0
 async function loadStudents() {
   if (!classId.value) return
   const my = ++listSeq
-  const d = await api<{ records: { id: number; name: string }[] }>(
-    `/api/student/list?classId=${classId.value}&page=1&size=100`)
+  // 批56③ 全体老师可评任意班：走教师侧 class-students（/api/student/list 按数据面过滤）
+  const d = await api<{ id: number; name: string }[]>(
+    `/api/meta/class-students?classId=${classId.value}`)
   if (my !== listSeq) return // 已切班，丢弃晚到的旧班名单
-  students.value = d.records
+  students.value = d
   studentIds.value = []
   history.value = []
 }

@@ -5,17 +5,20 @@
       <button class="start-btn seal" type="button" @click="openNew('SEAL')">
         <van-icon name="bookmark-o" /><span>公章使用申请</span>
       </button>
+      <!-- 批56① 物资申领暂停开放（后端 submit 同步拦截；恢复时取消注释即可）
       <button class="start-btn goods" type="button" @click="openNew('GOODS')">
         <van-icon name="shopping-cart-o" /><span>物资申领</span>
       </button>
+      -->
       <!-- 批53③ 场地预约独立成页（时段格+会议总览），此处直达 -->
       <button class="start-btn venue" type="button" @click="$router.push('/venue')">
         <van-icon name="location-o" /><span>场地预约</span>
       </button>
-      <!-- 批43① 采购申请（钉钉流程移植：五级链+附件+多组明细） -->
+      <!-- 批56① 采购申请暂停开放（后端 submit 同步拦截；恢复时取消注释即可）
       <button class="start-btn purchase" type="button" @click="openNew('PURCHASE')">
         <van-icon name="shop-o" /><span>采购申请</span>
       </button>
+      -->
     </div>
 
     <van-tabs v-model:active="tab" class="oa-tabs" sticky>

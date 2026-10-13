@@ -53,7 +53,7 @@ import java.util.stream.Collectors;
  * - 学期窗口 [start 00:00, end 00:00]（与 buildGrids 的过滤完全一致，聚合与报告永不分叉）
  * - kindCount = (title + 指标名) 去重组数（与 buildRecords 分组同构）
  * - weekNo = ⌊(evalTime − 开学日)/7天⌋ + 1
- * 写权限 = checkStudentAccess（任课教师可评，与活动/荣誉的班主任口径是有意差异，见架构 M7 节）。
+ * 写权限 = 批56③ 素养评价全体教职工可操作（不限班级关系，仅拒家长/门卫；原值班开关与任课口径废止）。
  */
 @Service
 @RequiredArgsConstructor
@@ -81,8 +81,12 @@ public class EvaluationService {
 
     public Map<String, Object> evaluate(UserPrincipal user, Long studentId, Long indicatorId, String title,
                                         BigDecimal score, String remark, LocalDateTime evalTime) {
-        dutyService.checkCanEvaluate(user.role(), user.userId());
-        Student student = dataScope.checkStudentAccess(user, studentId);
+        // 批56③ 素养评价全体老师可操作：不限班级关系（原值班开关与数据面收窄口径废止，家长/门卫仍拒）
+        checkTeacherSide(user);
+        Student student = studentMapper.selectById(studentId);
+        if (student == null) {
+            throw new BizException(404, "学生不存在");
+        }
         Indicator ind = indicatorMapper.selectById(indicatorId);
         if (ind == null || ind.getName() == null || ind.getName().isBlank()) {
             throw new BizException(404, "指标不存在");
@@ -239,9 +243,9 @@ public class EvaluationService {
         }
     }
 
-    /** 某学生某学期的评价列表（含格/指标/教师名，时间正序） */
+    /** 某学生某学期的评价列表（含格/指标/教师名，时间正序）；批56③ 权限同评价=全体老师 */
     public List<Map<String, Object>> list(UserPrincipal user, Long studentId, Long termId) {
-        dataScope.checkStudentAccess(user, studentId);
+        checkTeacherSide(user);
         Term term = termMapper.selectById(termId);
         if (term == null) {
             throw new BizException(404, "学期不存在");
@@ -274,12 +278,9 @@ public class EvaluationService {
         }).toList();
     }
 
-    /** 班级×学期评价导出 xlsx（批6 漏项C2；权限同查看：visibleClassIds 含该班，ADMIN/LEADER 全量） */
+    /** 班级×学期评价导出 xlsx（批6 漏项C2；批56③ 权限同查看=全体老师全校班级） */
     public Exported export(UserPrincipal user, Long classId, Long termId) {
-        List<Long> visible = dataScope.visibleClassIds(user);
-        if (visible != null && !visible.contains(classId)) {
-            throw new BizException(403, "无该班级数据权限");
-        }
+        checkTeacherSide(user);
         Term term = termMapper.selectById(termId);
         if (term == null) {
             throw new BizException(404, "学期不存在");
@@ -328,6 +329,13 @@ public class EvaluationService {
     }
 
     // ───────────────── 内部：与 ReportDataBuilder 同构的口径 ─────────────────
+
+    /** 批56③ 素养评价全体教职工可操作：仅拒家长/门卫（口径同 StudentController.checkTeacherSide） */
+    private void checkTeacherSide(UserPrincipal user) {
+        if ("PARENT".equals(user.role()) || "GUARD".equals(user.role())) {
+            throw new BizException(403, "仅教职工可使用素养评价");
+        }
+    }
 
     /** 学期窗口判定：[start 00:00, end 00:00] 闭区间（与 buildGrids 的 ge/le 过滤一致） */
     private Term termOf(LocalDateTime evalTime) {

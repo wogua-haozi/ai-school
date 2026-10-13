@@ -165,8 +165,11 @@ public class AdminUserController {
             return m;
         }).toList();
         // 批49 权限点标志批量回显（TeacherTab 两枚开关渲染免逐行 N+1；ADMIN 天生全权不落表恒 false）
-        Map<Long, Set<String>> permByUser = userPermissionMapper.selectList(new LambdaQueryWrapper<UserPermission>()
-                        .in(UserPermission::getUserId, p.getRecords().stream().map(User::getId).toList()))
+        // 批56 连带修：keyword 查无结果时空集合 .in() 生成 IN () 非法 SQL（selectPage 空页必炸，判空跳过）
+        List<Long> pageIds = p.getRecords().stream().map(User::getId).toList();
+        Map<Long, Set<String>> permByUser = pageIds.isEmpty() ? Map.of()
+                : userPermissionMapper.selectList(new LambdaQueryWrapper<UserPermission>()
+                        .in(UserPermission::getUserId, pageIds))
                 .stream().collect(Collectors.groupingBy(UserPermission::getUserId,
                         Collectors.mapping(UserPermission::getPermCode, Collectors.toSet())));
         for (int i = 0; i < records.size(); i++) {
@@ -175,8 +178,7 @@ public class AdminUserController {
             records.get(i).put("scoreAll", codes.contains(PermissionService.PERM_SCORE_ALL));
         }
         // 内嵌待审批标记（批2-5）：pendingCreate=新号待启用；pendingUpgradeTo=升级审批中的目标角色
-        Map<Long, RoleRequest> pendings = approvalService.pendingByUsers(
-                p.getRecords().stream().map(User::getId).toList());
+        Map<Long, RoleRequest> pendings = approvalService.pendingByUsers(pageIds);
         for (int i = 0; i < records.size(); i++) {
             User u = p.getRecords().get(i);
             RoleRequest pr = pendings.get(u.getId());

@@ -7,7 +7,6 @@ import com.aischool.server.entity.User;
 import com.aischool.server.mapper.DutyScheduleMapper;
 import com.aischool.server.mapper.UserMapper;
 import com.aischool.server.service.auth.PermissionService;
-import com.aischool.server.service.eval.DutyService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
@@ -22,29 +21,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-/** 值班排班管理（批6 漏项C1）：管理端配置开关+排班表 */
+/** 值班排班管理（批6 漏项C1；批56③ 开关退役——值日口径固定，仅保留排班表维护） */
 @RestController
 @RequestMapping("/api/admin/duty")
 @RequiredArgsConstructor
 public class AdminDutyController {
 
-    private final DutyService dutyService;
     private final DutyScheduleMapper dutyScheduleMapper;
     private final UserMapper userMapper;
     private final PermissionService permissionService;
-
-    @GetMapping("/config")
-    public ApiResponse<Map<String, Object>> config() {
-        permissionService.checkAdminAccess("只有管理员可配置值班");
-        return ApiResponse.ok(Map.of("dutyCheck", dutyService.isEnabled()));
-    }
-
-    @PutMapping("/config")
-    public ApiResponse<Void> setConfig(@Validated @RequestBody ConfigReq req) {
-        permissionService.checkAdminAccess("只有管理员可配置值班");
-        dutyService.setEnabled(req.getDutyCheck() != null && req.getDutyCheck());
-        return ApiResponse.ok();
-    }
 
     /** 某日排班（默认今天；含教师姓名） */
     @GetMapping("/list")
@@ -91,11 +76,6 @@ public class AdminDutyController {
         permissionService.checkAdminAccess("只有管理员可配置值班");
         dutyScheduleMapper.deleteById(id);
         return ApiResponse.ok();
-    }
-
-    @Data
-    public static class ConfigReq {
-        private Boolean dutyCheck;
     }
 
     @Data

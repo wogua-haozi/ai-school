@@ -1,10 +1,7 @@
 <template>
   <div>
-    <h4>值班排班（开关开启后，素养评价仅「当日值班教师」可操作；管理员/领导不受限。先排班再开开关，避免空排班锁死全员）</h4>
+    <h4>值日排班（当日值日老师可记「班级记分」任意班；管理员/领导不受限。素养评价已放开为全体教职工）</h4>
     <div class="bar">
-      <span class="lbl">值班校验</span>
-      <el-switch :model-value="dutyCheck" :loading="cfgSaving" inline-prompt active-text="开" inactive-text="关"
-        @change="(v: any) => setCfg(v)" />
       <el-date-picker v-model="date" type="date" value-format="YYYY-MM-DD" style="width: 150px" @change="load" />
       <el-select v-model="teacherId" filterable placeholder="选择教师" style="width: 200px">
         <el-option v-for="t in teachers" :key="t.id" :label="t.realName" :value="t.id" />
@@ -25,7 +22,7 @@
       </el-table-column>
     </el-table>
     <p class="hint" style="margin-top: 10px">
-      口径=操作发生日：教师在当天值班即可评价（补录历史日期也按当天是否值班判定）。
+      口径=操作发生日：教师在当天值日即可记班级记分（记分日期可补录近 31 天，权限按当天是否值日判定）。
     </p>
   </div>
 </template>
@@ -35,8 +32,6 @@ import { onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { api } from '../../api/http'
 
-const dutyCheck = ref(false)
-const cfgSaving = ref(false)
 // 本地时区的今天（toISOString 是 UTC，早 8 点前"今天"会落到昨天）
 const today = new Date()
 const date = ref(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`)
@@ -47,17 +42,6 @@ const rows = ref<any[]>([])
 
 async function load() {
   rows.value = await api<any[]>(`/api/admin/duty/list?date=${date.value}`)
-}
-
-async function setCfg(open: boolean) {
-  cfgSaving.value = true
-  try {
-    await api('/api/admin/duty/config', { method: 'PUT', json: { dutyCheck: open } })
-    dutyCheck.value = open
-    ElMessage.success(open ? '已开启：素养评价仅当日值班教师可操作' : '已关闭：全员可评价')
-  } finally {
-    cfgSaving.value = false
-  }
 }
 
 async function add() {
@@ -75,8 +59,6 @@ async function remove(row: any) {
 }
 
 onMounted(async () => {
-  const cfg = await api<{ dutyCheck: boolean }>('/api/admin/duty/config')
-  dutyCheck.value = !!cfg.dutyCheck
   const d = await api<{ records: any[] }>('/api/admin/user/list?page=1&size=200')
   teachers.value = d.records
   await load()

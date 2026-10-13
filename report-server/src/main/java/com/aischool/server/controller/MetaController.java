@@ -1,14 +1,17 @@
 package com.aischool.server.controller;
 
 import com.aischool.server.common.ApiResponse;
+import com.aischool.server.common.BizException;
 import com.aischool.server.entity.Clazz;
 import com.aischool.server.entity.Grade;
 import com.aischool.server.entity.Grid;
 import com.aischool.server.entity.Indicator;
+import com.aischool.server.entity.Student;
 import com.aischool.server.entity.Subject;
 import com.aischool.server.entity.Term;
 import com.aischool.server.entity.User;
 import com.aischool.server.mapper.ClazzMapper;
+import com.aischool.server.mapper.StudentMapper;
 import com.aischool.server.mapper.GradeMapper;
 import com.aischool.server.mapper.GridMapper;
 import com.aischool.server.mapper.IndicatorMapper;
@@ -36,6 +39,7 @@ public class MetaController {
 
     private final TermMapper termMapper;
     private final ClazzMapper clazzMapper;
+    private final StudentMapper studentMapper;
     private final GradeMapper gradeMapper;
     private final GridMapper gridMapper;
     private final IndicatorMapper indicatorMapper;
@@ -102,5 +106,46 @@ public class MetaController {
             m.put("gradeId", c.getGradeId());
             return m;
         }).toList());
+    }
+
+    /** 批56③ 素养评价全体教职工：全校班级下拉（不按任课/数据面过滤；仅拒家长/门卫） */
+    @GetMapping("/all-classes")
+    public ApiResponse<List<Map<String, Object>>> allClasses() {
+        checkTeacherSide();
+        return ApiResponse.ok(clazzMapper.selectList(new LambdaQueryWrapper<Clazz>().orderByAsc(Clazz::getId))
+                .stream().map(c -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("id", c.getId());
+                    m.put("name", c.getName());
+                    m.put("gradeId", c.getGradeId());
+                    return m;
+                }).toList());
+    }
+
+    /** 批56③ 素养评价选学生：按班拉在读学生（仅 id+姓名，按学号序；教师侧全校班） */
+    @GetMapping("/class-students")
+    public ApiResponse<List<Map<String, Object>>> classStudents(@RequestParam Long classId) {
+        checkTeacherSide();
+        if (clazzMapper.selectById(classId) == null) {
+            throw new BizException(404, "班级不存在");
+        }
+        return ApiResponse.ok(studentMapper.selectList(new LambdaQueryWrapper<Student>()
+                        .eq(Student::getClassId, classId)
+                        .eq(Student::getStatus, "在读")
+                        .orderByAsc(Student::getStudentNo))
+                .stream().map(s -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("id", s.getId());
+                    m.put("name", s.getName());
+                    return m;
+                }).toList());
+    }
+
+    /** 教师侧守卫：仅拒家长/门卫（批56③ 素养评价口径，同 StudentController） */
+    private void checkTeacherSide() {
+        String role = AuthUtil.current().role();
+        if ("PARENT".equals(role) || "GUARD".equals(role)) {
+            throw new BizException(403, "仅教职工可使用该功能");
+        }
     }
 }

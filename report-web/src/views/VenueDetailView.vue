@@ -26,12 +26,27 @@
           <small>{{ d.week }}</small><b>{{ d.day }}</b>
         </button>
       </div>
-      <div class="grid-head">
-        <span v-for="h in [6, 9, 12, 15, 18, 21]" :key="h">{{ h }}</span><span>23</span>
+      <!-- 批56④ 刻度对齐：刻度行与格子行交错（各 17 列等宽，数字=整点、对齐该小时起始格左缘）。
+           上行 6~13 / 下行 15~22；首末半点格 13:30/14:30/22:30 不标，起止时刻底部有精确显示 -->
+      <div class="row-head hi">
+        <template v-for="h in 8" :key="'hi' + h">
+          <span>{{ h + 5 }}</span><i />
+        </template>
+        <i />
       </div>
       <div class="grid">
-        <button v-for="(c, i) in cellClasses" :key="i" type="button" class="cell" :class="c"
+        <button v-for="(c, i) in cellClasses.slice(0, 17)" :key="'a' + i" type="button" class="cell" :class="c"
           @click="tap(i)">{{ selStart === i ? '起' : selEnd === i ? '止' : '' }}</button>
+      </div>
+      <div class="row-head lo">
+        <i />
+        <template v-for="h in 8" :key="'lo' + h">
+          <span>{{ h + 14 }}</span><i />
+        </template>
+      </div>
+      <div class="grid">
+        <button v-for="(c, i) in cellClasses.slice(17)" :key="'b' + i" type="button" class="cell" :class="c"
+          @click="tap(17 + i)">{{ selStart === 17 + i ? '起' : selEnd === 17 + i ? '止' : '' }}</button>
       </div>
       <div class="legend">
         <span><i class="lg free"></i>可预定</span><span><i class="lg pend"></i>待审批</span>
@@ -246,7 +261,12 @@ onMounted(async () => {
 .days .day.on { background: #0D9467; }
 .days .day.on small, .days .day.on b { color: #fff; }
 
-.grid-head { display: flex; justify-content: space-between; margin: 12px 0 4px; font-size: 9px; color: var(--app-text-3); }
+/* 批56④ 刻度与格子同列等宽交错排布：数字落在本行整点格左缘 */
+.row-head { display: grid; grid-template-columns: repeat(17, 1fr); gap: 2px; margin-bottom: 4px;
+  font-size: 9px; color: var(--app-text-3); }
+.row-head.hi { margin-top: 12px; }
+.row-head.lo { margin-top: 6px; }
+.row-head i { display: block; }
 .grid { display: grid; grid-template-columns: repeat(17, 1fr); gap: 2px; }
 .cell { height: 26px; border: none; border-radius: 4px; background: #EDF1F5;
   font-size: 9px; color: #fff; font-weight: 700; }

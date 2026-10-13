@@ -236,6 +236,11 @@ public class OaService {
         if (OaForm.TYPE_LEAVE.equals(req.getFormType())) {
             throw new BizException(400, "教师请假已下线，请按学校线下流程办理");
         }
+        // 批56①：物资申领/采购申请暂停开放（前端已藏发起入口，此处拦截防旧缓存提交；
+        // 存量单据列表/审批不受影响，恢复开放时删除本段即可）
+        if (OaForm.TYPE_GOODS.equals(req.getFormType()) || OaForm.TYPE_PURCHASE.equals(req.getFormType())) {
+            throw new BizException(400, "物资申领与采购申请暂停开放，恢复时间另行通知");
+        }
         String type = OaForm.TYPE_GOODS.equals(req.getFormType()) ? OaForm.TYPE_GOODS
                 : OaForm.TYPE_VENUE.equals(req.getFormType()) ? OaForm.TYPE_VENUE
                 : OaForm.TYPE_PURCHASE.equals(req.getFormType()) ? OaForm.TYPE_PURCHASE : OaForm.TYPE_SEAL;
