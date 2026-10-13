@@ -46,7 +46,7 @@
     <!-- 基本信息卡（学籍卡风格） -->
     <div class="app-card tl tex-14 info">
       <div class="app-sec" style="margin: 0 0 6px">基本信息<span class="card-tag">学籍卡</span>
-        <button v-if="editable" class="edit-btn" type="button" @click="openEdit">编辑资料</button>
+        <button v-if="editable || isDorm" class="edit-btn" type="button" @click="openEdit">{{ isDorm ? '订正宿舍' : '编辑资料' }}</button>
       </div>
       <van-cell title="状态" :value="stu.status || '—'" />
       <van-cell title="家长" :value="stu.guardianName || '—'" />
@@ -68,14 +68,15 @@
       </div>
     </div>
 
-    <!-- 编辑资料（批8.5：班主任/级长/管理员订正基本资料；转班转出走管理端） -->
-    <van-dialog v-model:show="editOpen" title="编辑资料" show-cancel-button :before-close="onEditClose">
+    <!-- 编辑资料（批8.5：班主任/级长/管理员订正基本资料；转班转出走管理端；
+         批60 生活老师只露宿舍三列订正，学籍/家长字段不下发） -->
+    <van-dialog v-model:show="editOpen" :title="isDorm ? '订正宿舍' : '编辑资料'" show-cancel-button :before-close="onEditClose">
       <div style="padding-top: 10px">
-        <van-field v-model="editForm.name" label="姓名" placeholder="学生姓名" />
-        <van-field v-model="editForm.genderStr" label="性别" placeholder="男 / 女 / 留空" />
-        <van-field v-model="editForm.studentNo" label="学号" placeholder="7 位：标识+入学年+班号+编号" />
-        <van-field v-model="editForm.guardianName" label="家长姓名" placeholder="留空=清除" />
-        <van-field v-model="editForm.guardianPhone" label="家长电话" placeholder="留空=清除" />
+        <van-field v-if="!isDorm" v-model="editForm.name" label="姓名" placeholder="学生姓名" />
+        <van-field v-if="!isDorm" v-model="editForm.genderStr" label="性别" placeholder="男 / 女 / 留空" />
+        <van-field v-if="!isDorm" v-model="editForm.studentNo" label="学号" placeholder="7 位：标识+入学年+班号+编号" />
+        <van-field v-if="!isDorm" v-model="editForm.guardianName" label="家长姓名" placeholder="留空=清除" />
+        <van-field v-if="!isDorm" v-model="editForm.guardianPhone" label="家长电话" placeholder="留空=清除" />
         <van-field v-model="editForm.dormBuilding" label="宿舍楼" placeholder="留空=清除" />
         <van-field v-model="editForm.dormRoom" label="房号" placeholder="留空=清除" />
         <van-field v-model="editForm.dormBed" label="床位" placeholder="留空=清除" />
@@ -139,17 +140,20 @@ function openEdit() {
 async function onEditClose(action: string) {
   if (action !== 'confirm') return true
   const f = editForm.value
-  if (!f.name.trim()) { showFailToast('姓名不能为空'); return false }
-  if (f.studentNo && !/^[12][0-9]{6}$/.test(f.studentNo)) { showFailToast('学号须为 7 位（标识+入学年+班号+编号）'); return false }
+  // 批60：生活老师只提交宿舍三列（后端 DORM 分支白名单双保险）
+  if (!isDorm.value && !f.name.trim()) { showFailToast('姓名不能为空'); return false }
+  if (!isDorm.value && f.studentNo && !/^[12][0-9]{6}$/.test(f.studentNo)) { showFailToast('学号须为 7 位（标识+入学年+班号+编号）'); return false }
   try {
     await api(`/api/student/${route.params.id}/profile`, {
       method: 'PUT',
-      json: {
-        name: f.name, studentNo: f.studentNo,
-        gender: f.genderStr === '男' ? 'M' : f.genderStr === '女' ? 'F' : '',
-        guardianName: f.guardianName, guardianPhone: f.guardianPhone,
-        dormBuilding: f.dormBuilding, dormRoom: f.dormRoom, dormBed: f.dormBed,
-      },
+      json: isDorm.value
+        ? { dormBuilding: f.dormBuilding, dormRoom: f.dormRoom, dormBed: f.dormBed }
+        : {
+            name: f.name, studentNo: f.studentNo,
+            gender: f.genderStr === '男' ? 'M' : f.genderStr === '女' ? 'F' : '',
+            guardianName: f.guardianName, guardianPhone: f.guardianPhone,
+            dormBuilding: f.dormBuilding, dormRoom: f.dormRoom, dormBed: f.dormBed,
+          },
     })
     showSuccessToast('已保存')
     await loadDetail()
@@ -194,6 +198,8 @@ function previewMoments(cur: string) {
 /* 入口配色（图4）：每格一色的实心圆角方底 + 白图标；noPre=目标页无按学生看数据的形态；
    批49：成绩格按成绩可见门过滤（教师/班主任零入口） */
 const auth = useAuthStore()
+/* 批60 宿管自治：生活老师可订正宿舍（弹层只露三列；家长账号卡不放开——重置家长密码不归宿管） */
+const isDorm = computed(() => auth.role === 'DORM')
 const entries = computed(() => [
   ...(auth.scoreAccess ? [{ name: '成绩', icon: 'bar-chart-o', to: '/scores', bg: '#3E7BFA' }] : []),
   { name: '素养评价', icon: 'edit', to: '/evaluate', bg: '#10B981' },

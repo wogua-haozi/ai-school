@@ -122,6 +122,14 @@ public class StudentController {
     public ApiResponse<Map<String, Object>> updateProfile(@PathVariable Long id, @RequestBody ProfileReq req) {
         var user = AuthUtil.current();
         Student s = dataScopeService.checkStudentAccess(user, id);
+        // 批60 宿管自治：生活老师（全校可看）只可订正宿舍三列，学籍/家长字段一律忽略（不走班主任门）
+        if ("DORM".equals(user.role())) {
+            studentMapper.update(null, new LambdaUpdateWrapper<Student>().eq(Student::getId, id)
+                    .set(req.getDormBuilding() != null, Student::getDormBuilding, blankToNull(req.getDormBuilding()))
+                    .set(req.getDormRoom() != null, Student::getDormRoom, blankToNull(req.getDormRoom()))
+                    .set(req.getDormBed() != null, Student::getDormBed, blankToNull(req.getDormBed())));
+            return ApiResponse.ok(Map.of("updated", true));
+        }
         dataScopeService.checkClassOperable(user, s.getClassId());
         if (req.getName() != null && !req.getName().isBlank()) {
             s.setName(req.getName().trim());

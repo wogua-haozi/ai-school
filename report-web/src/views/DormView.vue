@@ -23,9 +23,12 @@
         <div class="r-body">
           <p class="r-title"><b>{{ s.name }}</b><span class="cls">{{ s.className }}</span>
             <span class="gen">{{ s.gender === 'M' ? '男' : s.gender === 'F' ? '女' : '' }}</span></p>
-          <p class="r-meta">{{ s.studentNo }} · {{ s.dormBuilding }} {{ s.dormRoom }} 室 {{ s.dormBed }} 床</p>
+          <p class="r-meta">{{ s.studentNo }} · {{ dormText(s) }}</p>
         </div>
         <div class="r-side">
+          <a v-if="isDorm" class="tel" @click.stop="router.push(`/student/${s.id}`)">
+            <van-icon name="edit" /><span>订正</span>
+          </a>
           <a v-if="s.guardianPhone" :href="'tel:' + s.guardianPhone" class="tel" @click.stop>
             <van-icon name="phone-o" /><span>家长</span>
           </a>
@@ -43,7 +46,21 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { api } from '../api/http'
+import { useAuthStore } from '../stores/auth'
+
+const router = useRouter()
+const auth = useAuthStore()
+/* 批60 宿管自治：生活老师可直达学生详情订正宿舍（其他教师数据权限不含外班学生，不放开） */
+const isDorm = computed(() => auth.role === 'DORM')
+
+/* 宿舍三列拼装：部分缺格不漏「室/床」空壳，全空=未安排住宿（与详情页同款口径） */
+function dormText(s: DormRow) {
+  const b = s.dormBuilding, r = s.dormRoom, d = s.dormBed
+  if (!b && !r && !d) return '未安排住宿'
+  return [b, r].filter(Boolean).join(' ') + (d ? ` / ${d}床` : '')
+}
 
 interface DormRow {
   id: number; studentNo: string; name: string; gender?: string; className?: string
@@ -121,9 +138,9 @@ onMounted(async () => {
 .cls { font-size: 11px; color: var(--app-text-3); }
 .gen { font-size: 11px; color: var(--app-text-3); }
 .r-meta { margin: 3px 0 0; font-size: 12px; color: var(--app-text-2); }
-.r-side { flex: none; }
+.r-side { flex: none; display: flex; gap: 14px; }
 .tel { display: flex; flex-direction: column; align-items: center; gap: 2px; text-decoration: none;
-  font-size: 10px; color: var(--app-blue); }
+  font-size: 10px; color: var(--app-blue); cursor: pointer; }
 .tel .van-icon { font-size: 18px; }
 .empty { padding: 26px 0; text-align: center; font-size: 13px; color: var(--app-text-3); line-height: 1.6; }
 .more { padding: 10px 0 12px; font-size: 11px; color: var(--app-text-3); text-align: center; }
