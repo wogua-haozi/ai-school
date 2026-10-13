@@ -84,9 +84,14 @@ public class AuditFilter extends OncePerRequestFilter {
     }
 
     private String clientIp(HttpServletRequest request) {
+        // 反向代理链下取真实客户端 IP：X-Forwarded-For 第一跳，缺则 X-Real-IP（nginx 直传），最后才是 socket 地址
         String fwd = request.getHeader("X-Forwarded-For");
         if (fwd != null && !fwd.isBlank()) {
             return fwd.split(",")[0].trim();
+        }
+        String real = request.getHeader("X-Real-IP");
+        if (real != null && !real.isBlank()) {
+            return real.trim();
         }
         return request.getRemoteAddr();
     }
