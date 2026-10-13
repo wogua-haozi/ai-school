@@ -11,7 +11,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 在线统计：认证过滤器对每个已登录请求 touch 一次（内存态，单实例足够，重启即清零——只关心当前活跃）。
- * 「当前在线」= 最近 {@value #ONLINE_WINDOW_MIN} 分钟内有请求；「24h 活跃」= 表内全体；过期条目定时清理。
+ * 「当前在线」= 最近 {@value #ONLINE_WINDOW_MIN} 分钟内有请求；过期条目定时清理。
+ * （批56增补起「24h 活跃」改走 {@link LoginUsageService} 审计表口径，不再用本表。）
  */
 @Component
 public class OnlineTracker {
@@ -35,11 +36,6 @@ public class OnlineTracker {
                 .filter(u -> u.lastActiveMs() >= cut)
                 .sorted(Comparator.comparingLong(ActiveUser::lastActiveMs).reversed())
                 .toList();
-    }
-
-    /** 最近 24 小时活跃人数 */
-    public int dailyCount() {
-        return active.size();
     }
 
     /** 每小时清理：移除超过 24 小时无活动的条目 */

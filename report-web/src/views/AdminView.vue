@@ -26,7 +26,7 @@
           <span class="crumb">首页 / <b>{{ current.label }}</b></span>
           <div v-if="online.users !== null" class="chips">
             <span class="chip">在线 <b>{{ online.onlineCount }}</b></span>
-            <span class="chip">24h 活跃 <b>{{ online.dailyCount }}</b></span>
+            <span class="chip act" @click="showDaily = true">24h 活跃 <b>{{ online.dailyCount }}</b> 人</span>
             <el-tooltip v-if="online.users.length" placement="bottom">
               <template #content>
                 <div v-for="u in online.users" :key="u.userId">{{ u.realName }}（{{ u.username }}）· {{ ago(u.lastActiveMs) }}</div>
@@ -54,7 +54,7 @@
         <span class="dot"></span>
         当前在线 <b>{{ online.onlineCount }}</b> 人
         <span class="sep">·</span>
-        24 小时活跃 <b>{{ online.dailyCount }}</b> 人
+        24 小时活跃 <button class="lnk" type="button" @click="showDaily = true"><b>{{ online.dailyCount }}</b> 人</button>
         <el-tooltip v-if="online.users.length" placement="bottom">
           <template #content>
             <div v-for="u in online.users" :key="u.userId">{{ u.realName }}（{{ u.username }}）· {{ ago(u.lastActiveMs) }}</div>
@@ -85,6 +85,24 @@
         </el-tabs>
       </template>
     </template>
+
+    <!-- 批56增补：近 24h 登录名单（点统计条「24h 活跃」展开；两种形态共用） -->
+    <el-dialog v-model="showDaily" :title="`近 24 小时登录（${online.dailyCount} 人）`" width="min(560px, 92vw)">
+      <div class="login-list">
+        <div v-for="u in online.dailyUsers" :key="u.username" class="login-row">
+          <div class="uav">{{ (u.realName || '?').charAt(0) }}</div>
+          <div class="mid">
+            <b>{{ u.realName }}</b>
+            <small>{{ u.username }} · {{ roleCn(u.role) }}</small>
+          </div>
+          <div class="rgt">
+            <b>{{ fmtLast(u.lastAt) }}</b>
+            <small>登录 {{ u.tries }} 次</small>
+          </div>
+        </div>
+        <p v-if="!online.dailyUsers.length" class="empty">近 24 小时暂无登录记录</p>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -254,19 +272,37 @@ function onHealthScanned(danger: number) {
   healthDanger.value = danger
 }
 
-/* 在线统计：桌面顶栏 chips / 窄屏统计条共用；30 秒轮询，失败静默 */
-const online = reactive<{ onlineCount: number; dailyCount: number; users: any[] | null }>({
-  onlineCount: 0, dailyCount: 0, users: null,
+/* 在线统计：桌面顶栏 chips / 窄屏统计条共用；30 秒轮询，失败静默。
+   批56增补：dailyUsers=近 24h 登录名单（审计表口径），点「24h 活跃」弹窗查看 */
+const online = reactive<{ onlineCount: number; dailyCount: number; users: any[] | null; dailyUsers: any[] }>({
+  onlineCount: 0, dailyCount: 0, users: null, dailyUsers: [],
 })
+const showDaily = ref(false)
 let onlineTimer: number | undefined
 
 async function loadOnline() {
   try {
-    const d = await api<{ onlineCount: number; dailyCount: number; onlineUsers: any[] }>('/api/admin/online')
+    const d = await api<{ onlineCount: number; dailyCount: number; onlineUsers: any[]; dailyUsers: any[] }>('/api/admin/online')
     online.onlineCount = d.onlineCount
     online.dailyCount = d.dailyCount
     online.users = d.onlineUsers
+    online.dailyUsers = d.dailyUsers ?? []
   } catch { /* 静默 */ }
+}
+
+/** 角色中文（登录名单用；没映射到的原样展示） */
+function roleCn(role: string) {
+  const m: Record<string, string> = {
+    ADMIN: '管理员', LEADER: '领导', SECRETARY: '书记', GRADE_LEADER: '级长',
+    HEAD_TEACHER: '班主任', TEACHER: '教师', DIRECTOR: '学成中心主任',
+    DORM: '生活老师', GUARD: '门卫', PROCUREMENT: '招采', PARENT: '家长',
+  }
+  return m[role] || role || '—'
+}
+
+/** "2026-10-13T21:52:29" → "10-13 21:52" */
+function fmtLast(iso: string) {
+  return typeof iso === 'string' && iso.length >= 16 ? iso.slice(5, 16).replace('T', ' ') : '—'
 }
 
 function ago(ms: number) {
@@ -293,6 +329,22 @@ onUnmounted(() => {
 .online-bar .sep { color: var(--el-border-color-darker); }
 .online-bar .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--el-color-success); animation: online-pulse 2s infinite; }
 .who { cursor: help; text-decoration: underline dotted; font-size: 12px; color: var(--el-text-color-secondary); }
+.online-bar .lnk { border: none; background: none; padding: 0; font: inherit; color: inherit;
+  cursor: pointer; text-decoration: underline dotted; }
+
+/* 批56增补：24h 登录名单弹窗（桌面 chip 可点 + 名单行） */
+.chip.act { cursor: pointer; }
+.chip.act:hover { background: #EDF1F8; }
+.login-list { max-height: 56vh; overflow-y: auto; }
+.login-row { display: flex; align-items: center; gap: 10px; padding: 9px 2px; border-bottom: 1px solid #F0F2F6; }
+.login-row:last-of-type { border-bottom: none; }
+.login-row .mid { flex: 1; min-width: 0; }
+.login-row .mid b { font-size: 13.5px; color: var(--shine-navy, #1B2A4A); }
+.login-row .mid small { display: block; font-size: 11px; color: #8A93A6; margin-top: 1px; }
+.login-row .rgt { text-align: right; }
+.login-row .rgt b { font-size: 12.5px; color: var(--shine-navy, #1B2A4A); font-weight: 600; }
+.login-row .rgt small { display: block; font-size: 11px; color: #8A93A6; }
+.login-list .empty { text-align: center; color: #8A93A6; font-size: 13px; padding: 24px 0; }
 @keyframes online-pulse {
   0% { box-shadow: 0 0 0 0 rgba(103, 194, 58, 0.45); }
   70% { box-shadow: 0 0 0 7px rgba(103, 194, 58, 0); }

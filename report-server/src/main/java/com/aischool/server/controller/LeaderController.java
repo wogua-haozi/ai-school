@@ -16,6 +16,7 @@ import com.aischool.server.mapper.StudentMapper;
 import com.aischool.server.mapper.TeachMapper;
 import com.aischool.server.mapper.UserMapper;
 import com.aischool.server.security.AuthUtil;
+import com.aischool.server.service.LoginUsageService;
 import com.aischool.server.service.OnlineTracker;
 import com.aischool.server.service.auth.DataScopeService;
 import com.aischool.server.service.auth.RoleApprovalService;
@@ -57,6 +58,7 @@ public class LeaderController {
     private final ClazzMapper clazzMapper;
     private final EvaluationMapper evaluationMapper;
     private final OnlineTracker onlineTracker;
+    private final LoginUsageService loginUsage;
     private final RoleApprovalService approvalService;
     private final AiTaskMapper taskMapper;
     private final LeaderUsageMapper usageMapper;
@@ -97,7 +99,7 @@ public class LeaderController {
         data.put("teacherCount", userMapper.selectCount(new LambdaQueryWrapper<User>()
                 .in(User::getRole, "ADMIN", "LEADER", "HEAD_TEACHER", "TEACHER").eq(User::getStatus, 1)));
         data.put("onlineCount", onlineTracker.online().size());
-        data.put("dailyActive", onlineTracker.dailyCount());
+        data.put("dailyActive", loginUsage.daily().size()); // 批56增补：审计表口径（重启不丢）
         // 待我审批（批2-5）：管理员/领导账号双人审批，领导在 App 端处理
         data.put("pendingApprovals", approvalService.pendingCount());
         return ApiResponse.ok(data);
