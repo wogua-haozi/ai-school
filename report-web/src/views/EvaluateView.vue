@@ -41,7 +41,7 @@
             <span class="hint">限当日往前 31 天</span>
           </el-form-item>
           <el-form-item label="大项">
-            <el-select v-model="csCategory" placeholder="不归类" clearable style="width: 240px">
+            <el-select v-model="csCategory" placeholder="不归类" clearable style="width: 240px" @change="onCsCategoryChange">
               <el-option v-for="(s, i) in conductSections" :key="i" :label="s.name" :value="i + 1" />
             </el-select>
           </el-form-item>
@@ -53,11 +53,13 @@
             </div>
           </el-form-item>
           <el-form-item label="事项">
-            <el-input v-model="csItemText" placeholder="如：课室卫生检查不达标 / 全班广播操一等奖" style="max-width: 360px" />
+            <el-input v-model="csItemText" :readonly="csPicked" placeholder="如：课室卫生检查不达标 / 全班广播操一等奖" style="max-width: 360px" />
           </el-form-item>
           <el-form-item label="分值">
-            <el-input-number v-model="csDelta" :step="0.5" :min="-50" :max="50" :precision="1" controls-position="right" style="width: 120px" />
-            <span class="hint">正=加分，负=扣分（±50 以内）</span>
+            <el-input-number v-model="csDelta" :step="0.5" :min="-50" :max="50" :precision="1" controls-position="right" style="width: 120px" :disabled="csPicked" />
+            <span v-if="csPicked" class="hint">常见条目为固定分值，不可修改</span>
+            <span v-else class="hint">正=加分，负=扣分（±50 以内）</span>
+            <el-button v-if="csPicked" link type="primary" style="margin-left: 8px" @click="clearCsPick">重新填写</el-button>
           </el-form-item>
           <el-form-item label="备注">
             <el-input v-model="csNote" placeholder="选填" style="max-width: 360px" />
@@ -170,6 +172,7 @@ const csClassId = ref<number>()
 const csCategory = ref<number>()
 const csItemText = ref('')
 const csDelta = ref(-1)
+const csPicked = ref(false)
 const csNote = ref('')
 const csRecords = ref<any[]>([])
 const csSaving = ref(false)
@@ -185,6 +188,18 @@ function pickCsItem(it: { text: string; delta: string }) {
   csItemText.value = it.text
   const d = Number(it.delta)
   if (it.delta !== '' && !Number.isNaN(d)) csDelta.value = d
+  csPicked.value = true
+}
+
+/** 常见条目分值固定，锁定后仅可换选条目或点「重新填写」恢复自由录入 */
+function onCsCategoryChange() {
+  if (csPicked.value) clearCsPick()
+}
+
+function clearCsPick() {
+  csPicked.value = false
+  csItemText.value = ''
+  csDelta.value = -1
 }
 
 async function loadCsRecords() {
@@ -209,6 +224,7 @@ async function submitCs() {
     })
     ElMessage.success('已记录，文明班排名即时生效')
     csItemText.value = ''
+    csPicked.value = false
     csNote.value = ''
     await loadCsRecords()
   } finally {
