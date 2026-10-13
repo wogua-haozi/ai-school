@@ -94,22 +94,30 @@
       </template>
     </el-dialog>
 
-    <!-- 家长邀请码（批8.6）：班主任在 App 生成为主路径，管理端兜底同款能力 -->
+    <!-- 家长邀请码（批8.6；批57① 改班级码）：班主任在 App 生成为主路径，管理端兜底同款能力 -->
     <el-dialog v-model="inviteDialog" title="家长邀请码（自助注册）" width="640px">
       <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 10px">
         <el-select v-model="inviteClassId" placeholder="选择班级" style="width: 200px" @change="loadInvite">
           <el-option v-for="c in classes" :key="c.id" :label="c.name" :value="c.id" />
         </el-select>
-        <el-button type="primary" size="small" :disabled="!inviteClassId" :loading="inviting" @click="genInviteAll">一键生成全班</el-button>
-        <span style="font-size: 12px; color: var(--el-text-color-secondary)">家长凭「学号+邀请码」在登录页自助注册</span>
+        <el-button type="primary" size="small" :disabled="!inviteClassId" :loading="inviting" @click="genClassCode">生成班级码</el-button>
+        <span style="font-size: 12px; color: var(--el-text-color-secondary)">家长凭「学号+孩子姓名+班级码」在登录页自助注册</span>
+      </div>
+      <div v-if="inviteClassCode" style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; margin-bottom: 10px;
+        border: 1px dashed var(--el-color-primary); border-radius: 8px; background: var(--el-color-primary-light-9)">
+        <div>
+          <div style="font-size: 12px; color: var(--el-text-color-secondary)">本班班级码（全班共用，可重复使用）</div>
+          <b style="font-family: monospace; font-size: 18px; letter-spacing: 3px">{{ inviteClassCode }}</b>
+        </div>
+        <el-button link type="primary" style="margin-left: auto" @click="copyClassCode">复制班级码</el-button>
       </div>
       <el-table v-if="inviteRows.length" :data="inviteRows" size="small" max-height="380">
         <el-table-column prop="studentNo" label="学号" width="110" />
         <el-table-column prop="name" label="姓名" width="100" />
-        <el-table-column label="邀请码" width="140">
+        <el-table-column label="专属码" width="140">
           <template #default="{ row }">
             <b v-if="row.code" style="font-family: monospace; letter-spacing: 2px">{{ row.code }}</b>
-            <span v-else style="color: #c0c4cc; font-size: 12px">未生成</span>
+            <span v-else style="color: #c0c4cc; font-size: 12px">—</span>
           </template>
         </el-table-column>
         <el-table-column label="状态" width="120">
@@ -119,13 +127,14 @@
             <span v-else style="font-size: 12px; color: var(--el-text-color-secondary)">—</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="90">
+        <el-table-column label="操作" width="120">
           <template #default="{ row }">
             <el-button v-if="row.code" link type="primary" @click="copyInvite(row)">复制</el-button>
+            <el-button v-else link type="primary" @click="genStudentCode(row)">生成专属码</el-button>
           </template>
         </el-table-column>
       </el-table>
-      <div v-else class="dlg-tip" style="margin-top: 8px">先选择班级查看码况；重新生成后旧码作废。每位学生自助注册上限 2 位家长，更多家长可在「新建家长/绑定管理」里兜底绑定。</div>
+      <div v-else class="dlg-tip" style="margin-top: 8px">先选择班级查看码况；重新生成班级码后旧码作废。每位学生自助注册上限 2 位家长，更多家长可在「新建家长/绑定管理」里兜底绑定。转班过渡期等个别学生可对其生成专属码。</div>
     </el-dialog>
 
     <!-- 绑定管理 -->
@@ -157,7 +166,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, fetchBlob } from '../../api/http'
 import { saveFile } from '../../api/nativeShare'
@@ -176,11 +185,12 @@ const genClassId = ref<number>()
 const genResult = ref<any>(null)
 const generating = ref(false)
 
-/* 家长邀请码（批8.6） */
+/* 家长邀请码（批8.6；批57① 改班级码：全班共用一码；专属码=个别学生） */
 const inviteDialog = ref(false)
 const inviteClassId = ref<number>()
 const inviteRows = ref<any[]>([])
 const inviting = ref(false)
+const inviteClassCode = computed(() => inviteRows.value[0]?.classCode ?? '')
 
 function openInvite() {
   inviteDialog.value = true
@@ -192,7 +202,7 @@ async function loadInvite() {
   inviteRows.value = await api<any[]>(`/api/invite/list?classId=${inviteClassId.value}`)
 }
 
-async function genInviteAll() {
+async function genClassCode() {
   inviting.value = true
   try {
     await api('/api/invite/generate', { method: 'POST', json: { classId: inviteClassId.value } })
@@ -202,13 +212,28 @@ async function genInviteAll() {
   }
 }
 
+async function genStudentCode(row: any) {
+  await api('/api/invite/generate', { method: 'POST', json: { studentId: row.studentId } })
+  await loadInvite()
+}
+
+async function copyClassCode() {
+  try {
+    await navigator.clipboard.writeText(inviteClassCode.value)
+    ElMessage.success('已复制班级邀请码')
+  } catch {
+    // 非 HTTPS 环境无剪贴板权限：直接展示码兜底
+    ElMessage.info(`班级邀请码：${inviteClassCode.value}`)
+  }
+}
+
 async function copyInvite(row: any) {
   try {
     await navigator.clipboard.writeText(row.code)
-    ElMessage.success(`已复制 ${row.name} 的邀请码`)
+    ElMessage.success(`已复制 ${row.name} 的专属码`)
   } catch {
     // 非 HTTPS 环境无剪贴板权限：直接展示码兜底
-    ElMessage.info(`邀请码：${row.code}`)
+    ElMessage.info(`${row.name} 的专属码：${row.code}`)
   }
 }
 

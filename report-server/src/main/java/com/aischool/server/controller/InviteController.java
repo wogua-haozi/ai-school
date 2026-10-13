@@ -56,36 +56,38 @@ public class InviteController {
         private Long classId;
     }
 
-    /** 单个/按班批量生成：classId 携带时全班各生一码（已用码保留，旧未用码作废换新） */
+    /** 单个/按班生成：classId 携带时生成一个班级码（全班共用不消费，旧班级码作废换新）；
+     *  studentId 携带时生成学生级码（转学生等个别场景，一码一学生，注册消费置 USED） */
     @PostMapping("/generate")
     public ApiResponse<List<Map<String, Object>>> generate(@RequestBody GenerateReq req) {
         var user = AuthUtil.current();
-        List<Student> students;
+        List<Map<String, Object>> out = new ArrayList<>();
         if (req.getClassId() != null) {
             dataScope.checkClassOperable(user, req.getClassId());
-            students = classStudents(req.getClassId());
+            if (clazzMapper.selectById(req.getClassId()) == null) {
+                throw new BizException(404, "班级不存在");
+            }
+            out.add(Map.of(
+                    "classId", req.getClassId(),
+                    "code", issueClass(req.getClassId())));
         } else if (req.getStudentId() != null) {
             Student s = studentMapper.selectById(req.getStudentId());
             if (s == null) {
                 throw new BizException(404, "学生不存在");
             }
             dataScope.checkClassOperable(user, s.getClassId());
-            students = List.of(s);
-        } else {
-            throw new BizException(400, "须携带 studentId 或 classId");
-        }
-        List<Map<String, Object>> out = new ArrayList<>();
-        for (Student s : students) {
             out.add(Map.of(
                     "studentId", s.getId(),
                     "studentNo", s.getStudentNo() == null ? "" : s.getStudentNo(),
                     "name", s.getName(),
                     "code", issue(s.getId())));
+        } else {
+            throw new BizException(400, "须携带 studentId 或 classId");
         }
         return ApiResponse.ok(out);
     }
 
-    /** 班内码况：每生当前有效码 + 已绑家长数（未生成的学生也列出，code 为空） */
+    /** 班内码况：班级码（每行同值，前端取 rows[0].classCode）+ 每生绑定/注册状态 + 学生级码（转学生个别发） */
     @GetMapping("/list")
     public ApiResponse<List<Map<String, Object>>> list(@RequestParam Long classId) {
         var user = AuthUtil.current();
@@ -102,6 +104,10 @@ public class InviteController {
                         .in(InviteCode::getStudentId, students.stream().map(Student::getId).toList())
                         .eq(InviteCode::getStatus, InviteCode.USED))
                 .stream().map(InviteCode::getStudentId).collect(Collectors.toSet());
+        String classCode = inviteMapper.selectList(new LambdaQueryWrapper<InviteCode>()
+                        .eq(InviteCode::getClassId, classId).eq(InviteCode::getStatus, InviteCode.UNUSED)
+                        .orderByDesc(InviteCode::getId).last("LIMIT 1"))
+                .stream().findFirst().map(InviteCode::getCode).orElse("");
         List<Map<String, Object>> out = new ArrayList<>();
         for (Student s : students) {
             InviteCode c = codes.get(s.getId());
@@ -110,6 +116,7 @@ public class InviteController {
                     "studentNo", s.getStudentNo() == null ? "" : s.getStudentNo(),
                     "name", s.getName(),
                     "code", c == null ? "" : c.getCode(),
+                    "classCode", classCode,
                     "registered", usedCodeStudents.contains(s.getId()),
                     "boundCount", boundCount.getOrDefault(s.getId(), 0L)));
         }
@@ -124,6 +131,21 @@ public class InviteController {
                     c.setStatus(InviteCode.VOID);
                     inviteMapper.updateById(c);
                 });
+        return insert(studentId, null);
+    }
+
+    /** 生成班级新码：旧班级码作废换新；全班共用不消费（status 恒 UNUSED，可反复注册） */
+    private String issueClass(Long classId) {
+        inviteMapper.selectList(new LambdaQueryWrapper<InviteCode>()
+                        .eq(InviteCode::getClassId, classId).eq(InviteCode::getStatus, InviteCode.UNUSED))
+                .forEach(c -> {
+                    c.setStatus(InviteCode.VOID);
+                    inviteMapper.updateById(c);
+                });
+        return insert(null, classId);
+    }
+
+    private String insert(Long studentId, Long classId) {
         SecureRandom rnd = new SecureRandom();
         StringBuilder sb = new StringBuilder(8);
         for (int i = 0; i < 8; i++) {
@@ -131,6 +153,7 @@ public class InviteController {
         }
         InviteCode c = new InviteCode();
         c.setStudentId(studentId);
+        c.setClassId(classId);
         c.setCode(sb.toString());
         c.setStatus(InviteCode.UNUSED);
         inviteMapper.insert(c);

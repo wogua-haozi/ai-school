@@ -26,8 +26,10 @@
               { validator: (v: string) => v === form.password, message: '两次密码不一致' }]" />
           <van-field v-model="form.studentNo" left-icon="user-o" placeholder="孩子学号（如 1250101）"
             :rules="[{ required: true, message: '请输入孩子学号' }]" />
-          <van-field v-model="form.inviteCode" left-icon="coupon-o" placeholder="邀请码（向班主任获取）"
-            :rules="[{ required: true, message: '请输入邀请码' }]" />
+          <van-field v-model="form.studentName" left-icon="friends-o" placeholder="孩子姓名"
+            :rules="[{ required: true, message: '请输入孩子姓名' }]" />
+          <van-field v-model="form.inviteCode" left-icon="coupon-o" placeholder="班级邀请码（向班主任获取）"
+            :rules="[{ required: true, message: '请输入班级邀请码' }]" />
           <van-field v-model="form.realName" left-icon="contact" placeholder="您的姓名（选填）" />
           <van-field v-model="relationText" is-link readonly left-icon="friends-o" placeholder="与孩子的关系"
             :rules="[{ required: true, message: '请选择与孩子的关系' }]" @click="relOpen = true" />
@@ -38,7 +40,7 @@
       </van-form>
 
       <button class="forgot" type="button" @click="$router.push('/login')">已有账号？返回登录</button>
-      <p class="tip">邀请码由班主任在 App「班级-家长邀请码」生成，一码对应一位学生；每位学生最多自助注册 2 位家长，更多家长请联系班主任绑定。</p>
+      <p class="tip">班级邀请码由班主任在 App「班级-家长邀请码」生成，全班共用一个码，家长凭「学号+孩子姓名+邀请码」绑定自己孩子；每位学生最多自助注册 2 位家长，更多家长请联系班主任绑定。</p>
     </motion.div>
 
     <van-popup v-model:show="relOpen" position="bottom" round>
@@ -58,7 +60,7 @@ import { useAuthStore } from '../stores/auth'
 // Vant4 Picker columns 须对象数组（{text,value}，同 ClassView 班级选择器）
 const RELATIONS = ['父亲', '母亲', '爷爷', '奶奶', '外公', '外婆', '其他家属'].map((t) => ({ text: t, value: t }))
 
-const form = reactive({ phone: '', password: '', password2: '', studentNo: '', inviteCode: '', realName: '' })
+const form = reactive({ phone: '', password: '', password2: '', studentNo: '', studentName: '', inviteCode: '', realName: '' })
 const relationText = ref('')
 const relation = ref('')
 const relOpen = ref(false)
@@ -81,7 +83,7 @@ async function doRegister() {
       method: 'POST',
       json: {
         phone: form.phone, password: form.password,
-        studentNo: form.studentNo.trim(), inviteCode: form.inviteCode.trim(),
+        studentNo: form.studentNo.trim(), studentName: form.studentName.trim(), inviteCode: form.inviteCode.trim(),
         realName: form.realName.trim(), relation: relation.value,
       },
     })

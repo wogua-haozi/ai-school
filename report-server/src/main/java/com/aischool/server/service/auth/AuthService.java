@@ -48,10 +48,12 @@ public class AuthService {
     private final ParentBindingMapper parentBindingMapper;
     private final PermissionService permissionService;
 
-    /** 家长自助注册（批8.6）：学号+邀请码绑定孩子；自助绑定每生上限 2 个（管理端/班主任绑定不受限）。
-     *  手机号即登录名；密码自设（≥8 位，无强制改密）。成功即登录，返回与 login 相同结构。 */
+    /** 家长自助注册（批8.6；批57① 增班级码）：凭「学号+邀请码(+孩子姓名)」绑定孩子。
+     *  班级码=全班共用不消费，须学号在该班且姓名匹配；学生级码（转学生单发）=一码一学生，注册消费。
+     *  自助绑定每生上限 2 个（管理端/班主任绑定不受限）；手机号即登录名；成功即登录，返回与 login 相同结构。 */
     public Map<String, Object> registerParent(String phone, String password, String studentNo,
-                                              String inviteCode, String realName, String relation) {
+                                              String inviteCode, String studentName,
+                                              String realName, String relation) {
         if (phone == null || !phone.matches("^1\\d{10}$")) {
             throw new BizException(400, "手机号格式不正确");
         }
@@ -75,11 +77,31 @@ public class AuthService {
         }
         InviteCode code = inviteCodeMapper.selectOne(new LambdaQueryWrapper<InviteCode>()
                 .eq(InviteCode::getCode, inviteCode.trim()).last("LIMIT 1"));
-        if (code == null || !student.getId().equals(code.getStudentId())) {
-            throw new BizException(400, "邀请码不正确（一码对应一位学生，请向班主任核对）");
+        boolean classCode = code != null && code.getClassId() != null;
+        if (code == null) {
+            throw new BizException(400, "邀请码不正确，请向班主任核对");
         }
-        if (code.getStatus() != InviteCode.UNUSED) {
-            throw new BizException(400, "邀请码已使用或已作废，请向班主任重新获取");
+        if (classCode) {
+            // 班级码：学号须在该班 + 孩子姓名精确匹配（班主任只发一次码，家长凭三要素对上自己孩子）
+            if (!code.getClassId().equals(student.getClassId())) {
+                throw new BizException(400, "学号与班级邀请码不匹配，请向班主任核对");
+            }
+            if (studentName == null || studentName.isBlank()) {
+                throw new BizException(400, "请填写孩子姓名");
+            }
+            if (!student.getName().equals(studentName.trim())) {
+                throw new BizException(400, "孩子姓名与学号不符，请核对");
+            }
+            if (code.getStatus() != InviteCode.UNUSED) {
+                throw new BizException(400, "邀请码已作废，请向班主任重新获取");
+            }
+        } else {
+            if (!student.getId().equals(code.getStudentId())) {
+                throw new BizException(400, "邀请码不正确（一码对应一位学生，请向班主任核对）");
+            }
+            if (code.getStatus() != InviteCode.UNUSED) {
+                throw new BizException(400, "邀请码已使用或已作废，请向班主任重新获取");
+            }
         }
         // 自助上限 2/生（管理端/班主任绑定不占此限，爷爷奶奶兜底走管理端）
         long selfBound = parentBindingMapper.selectCount(new LambdaQueryWrapper<ParentBinding>()
@@ -88,14 +110,17 @@ public class AuthService {
         if (selfBound >= 2) {
             throw new BizException(400, "该学生的自助注册名额已满（上限 2 位），其余家长请联系班主任绑定");
         }
-        // 原子占用邀请码（status 0→1 条件 UPDATE）：防两位家长持同一码并发注册——
+        // 学生级码原子占用（status 0→1 条件 UPDATE）：防两位家长持同一码并发注册——
         // 先读后写竞态会把一码绑两人并穿透自助上限。占码后建号失败则码作废，班主任可一键重发。
-        int taken = inviteCodeMapper.update(null, new LambdaUpdateWrapper<InviteCode>()
-                .eq(InviteCode::getId, code.getId())
-                .eq(InviteCode::getStatus, InviteCode.UNUSED)
-                .set(InviteCode::getStatus, InviteCode.USED));
-        if (taken == 0) {
-            throw new BizException(400, "邀请码已被使用，请向班主任重新获取");
+        // 班级码全班共用不消费，无需占用；每生≤2 并发穿透窗口极小（uk_parent_student 防重复绑定），管理端解绑兜底。
+        if (!classCode) {
+            int taken = inviteCodeMapper.update(null, new LambdaUpdateWrapper<InviteCode>()
+                    .eq(InviteCode::getId, code.getId())
+                    .eq(InviteCode::getStatus, InviteCode.UNUSED)
+                    .set(InviteCode::getStatus, InviteCode.USED));
+            if (taken == 0) {
+                throw new BizException(400, "邀请码已被使用，请向班主任重新获取");
+            }
         }
         User u = new User();
         u.setUsername(phone);
@@ -116,9 +141,11 @@ public class AuthService {
         b.setRelation(relation == null || relation.isBlank() ? "家长" : relation.trim());
         b.setSource(1);
         parentBindingMapper.insert(b);
-        inviteCodeMapper.update(null, new LambdaUpdateWrapper<InviteCode>()
-                .eq(InviteCode::getId, code.getId())
-                .set(InviteCode::getUsedBy, u.getId()));
+        if (!classCode) {
+            inviteCodeMapper.update(null, new LambdaUpdateWrapper<InviteCode>()
+                    .eq(InviteCode::getId, code.getId())
+                    .set(InviteCode::getUsedBy, u.getId()));
+        }
 
         String token = jwtService.issue(u.getId(), u.getUsername(), u.getRealName(), u.getRole(), false);
         Map<String, Object> m = new LinkedHashMap<>();

@@ -8,6 +8,7 @@ import com.aischool.server.mapper.DutyScheduleMapper;
 import com.aischool.server.mapper.UserMapper;
 import com.aischool.server.service.auth.PermissionService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
@@ -53,22 +54,38 @@ public class AdminDutyController {
         }).toList());
     }
 
+    /** 批量排班（批57②）：日期范围 × 多教师一次排完；同日同师已排的跳过（幂等） */
     @PostMapping
-    public ApiResponse<Void> add(@Validated @RequestBody DutyReq req) {
+    public ApiResponse<Map<String, Integer>> add(@Validated @RequestBody DutyReq req) {
         permissionService.checkAdminAccess("只有管理员可配置值班");
-        if (userMapper.selectById(req.getTeacherId()) == null) {
-            throw new BizException(404, "教师不存在");
+        LocalDate end = req.getDateEnd() == null || req.getDateEnd().isBefore(req.getDutyDate())
+                ? req.getDutyDate() : req.getDateEnd();
+        if (java.time.temporal.ChronoUnit.DAYS.between(req.getDutyDate(), end) > 365) {
+            throw new BizException(400, "日期范围不能超过 1 年");
         }
-        DutySchedule row = new DutySchedule();
-        row.setDutyDate(req.getDutyDate());
-        row.setTeacherId(req.getTeacherId());
-        row.setNote(req.getNote());
-        try {
-            dutyScheduleMapper.insert(row);
-        } catch (DuplicateKeyException e) {
-            throw new BizException(400, "该教师当天已在值班名单");
+        if (req.getTeacherIds() == null || req.getTeacherIds().isEmpty()) {
+            throw new BizException(400, "请选择至少一位教师");
         }
-        return ApiResponse.ok();
+        if (userMapper.selectBatchIds(req.getTeacherIds()).size() != req.getTeacherIds().size()) {
+            throw new BizException(404, "包含不存在的教师");
+        }
+        int added = 0;
+        int skipped = 0;
+        for (LocalDate d = req.getDutyDate(); !d.isAfter(end); d = d.plusDays(1)) {
+            for (Long tid : req.getTeacherIds()) {
+                DutySchedule row = new DutySchedule();
+                row.setDutyDate(d);
+                row.setTeacherId(tid);
+                row.setNote(req.getNote());
+                try {
+                    dutyScheduleMapper.insert(row);
+                    added++;
+                } catch (DuplicateKeyException e) {
+                    skipped++; // 该教师当天已在名单：跳过继续，整体幂等
+                }
+            }
+        }
+        return ApiResponse.ok(Map.of("added", added, "skipped", skipped));
     }
 
     @DeleteMapping("/{id}")
@@ -82,8 +99,10 @@ public class AdminDutyController {
     public static class DutyReq {
         @NotNull(message = "dutyDate 不能为空")
         private LocalDate dutyDate;
-        @NotNull(message = "teacherId 不能为空")
-        private Long teacherId;
+        /** 结束日（含）；缺省=仅 dutyDate 当天 */
+        private LocalDate dateEnd;
+        @NotEmpty(message = "请选择至少一位教师")
+        private List<Long> teacherIds;
         private String note;
     }
 }

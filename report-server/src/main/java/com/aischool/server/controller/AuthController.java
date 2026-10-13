@@ -79,16 +79,17 @@ public class AuthController {
         private String studentNo;
         @NotBlank(message = "邀请码不能为空")
         private String inviteCode;
+        private String studentName;
         private String realName;
         private String relation;
     }
 
-    /** 家长自助注册（批8.6，免登录）：手机号+密码+学号+邀请码，绑定成功即登录 */
+    /** 家长自助注册（批8.6，免登录；批57① 班级码+孩子姓名）：手机号+密码+学号+邀请码，绑定成功即登录 */
     @PostMapping("/parent/register")
     public ApiResponse<Map<String, Object>> registerParent(@Validated @RequestBody ParentRegisterReq req,
                                                            HttpServletRequest request) {
         Map<String, Object> result = authService.registerParent(req.getPhone(), req.getPassword(),
-                req.getStudentNo(), req.getInviteCode(), req.getRealName(), req.getRelation());
+                req.getStudentNo(), req.getInviteCode(), req.getStudentName(), req.getRealName(), req.getRelation());
         request.setAttribute(AuditFilter.ATTR_USER_ID, ((Number) ((Map<?, ?>) result.get("user")).get("id")).longValue());
         request.setAttribute(AuditFilter.ATTR_USERNAME, req.getPhone());
         return ApiResponse.ok(result);

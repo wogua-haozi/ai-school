@@ -80,27 +80,34 @@
       <van-picker title="选择班级" :columns="classColumns" @confirm="onPick" @cancel="pickOpen = false" />
     </van-popup>
 
-    <!-- 家长邀请码（批8.6）：班主任/级长/管理员按班生成，家长凭「学号+邀请码」自助注册 -->
+    <!-- 家长邀请码（批8.6；批57① 改班级码：全班共用一码，家长凭「学号+孩子姓名+班级码」自助注册 -->
     <van-popup v-model:show="inviteOpen" position="bottom" round :style="{ maxHeight: '78%' }" class="invite-pop">
       <div class="iv-head">
         <div>
           <b>家长邀请码</b>
-          <small>发给对应学生的家长，在登录页「家长注册」使用</small>
+          <small>发一次全班通用；家长在登录页「家长注册」凭学号+孩子姓名绑定</small>
         </div>
-        <van-button size="small" round type="primary" :loading="inviteBusy" @click="genAll">一键生成全班</van-button>
+        <van-button size="small" round type="primary" :loading="inviteBusy" @click="genClass">生成班级码</van-button>
       </div>
+      <div v-if="classCode" class="iv-class" @click="copyText(classCode, '班级邀请码')">
+        <div class="iv-stu">
+          <small>本班班级码（点击复制）</small>
+          <b class="iv-code">{{ classCode }}</b>
+        </div>
+        <van-tag type="primary" plain>全班共用</van-tag>
+      </div>
+      <div v-else class="iv-empty-code">尚未生成班级码，点击右上角「生成班级码」</div>
       <div class="iv-list">
-        <div v-for="r in inviteRows" :key="r.studentId" class="iv-row" @click="copyCode(r)">
+        <div v-for="r in inviteRows" :key="r.studentId" class="iv-row" @click="r.code && copyCode(r)">
           <div class="iv-stu">
             <b>{{ r.name }}</b>
             <small>{{ r.studentNo || '无学号' }}<template v-if="r.boundCount"> · 已绑 {{ r.boundCount }} 位家长</template><template v-if="r.registered"> · 已注册</template></small>
           </div>
           <van-tag v-if="r.code" type="primary" plain class="iv-code">{{ r.code }}</van-tag>
-          <span v-else class="iv-none">未生成</span>
         </div>
         <van-empty v-if="!inviteRows.length" image-size="72" description="本班暂无在读学生" />
       </div>
-      <p class="iv-tip">点击行复制邀请码；重新生成后旧码作废。每位学生最多自助注册 2 位家长，更多家长请由管理端绑定。</p>
+      <p class="iv-tip">班级码全班共用、可重复使用，重新生成后旧码作废。每位学生最多自助注册 2 位家长，更多家长请由管理端绑定。个别需专属码的学生（如转班过渡期）可由管理端「家长邀请码」生成。</p>
     </van-popup>
     </van-pull-refresh>
     <PhotoPreview ref="photoPreview" />
@@ -134,10 +141,12 @@ const pickOpen = ref(false)
 const auth = useAuthStore()
 const asset = useAssetStore()
 const canInvite = computed(() => ['HEAD_TEACHER', 'GRADE_LEADER', 'LEADER', 'ADMIN'].includes(auth.role))
-interface InviteRow { studentId: number; studentNo: string; name: string; code: string; registered: boolean; boundCount: number }
+interface InviteRow { studentId: number; studentNo: string; name: string; code: string; classCode: string; registered: boolean; boundCount: number }
 const inviteOpen = ref(false)
 const inviteBusy = ref(false)
 const inviteRows = ref<InviteRow[]>([])
+/** 班级码全班同值（后端每行携带，取首行） */
+const classCode = computed(() => inviteRows.value[0]?.classCode ?? '')
 
 async function openInvite() {
   if (!classId.value) return
@@ -154,7 +163,7 @@ async function loadInvite() {
   }
 }
 
-async function genAll() {
+async function genClass() {
   inviteBusy.value = true
   try {
     await api('/api/invite/generate', { method: 'POST', json: { classId: classId.value } })
@@ -164,13 +173,22 @@ async function genAll() {
   }
 }
 
+async function copyText(code: string, label: string) {
+  try {
+    await navigator.clipboard.writeText(code)
+    showSuccessToast(`已复制${label}`)
+  } catch {
+    showToast(`${label}：${code}`)
+  }
+}
+
 async function copyCode(r: InviteRow) {
   if (!r.code) return
   try {
     await navigator.clipboard.writeText(r.code)
-    showSuccessToast(`已复制 ${r.name} 的邀请码`)
+    showSuccessToast(`已复制 ${r.name} 的专属码`)
   } catch {
-    showToast(`邀请码：${r.code}`)
+    showToast(`专属码：${r.code}`)
   }
 }
 const refreshing = ref(false)
@@ -303,6 +321,12 @@ onMounted(async () => {
   padding: 16px 18px 10px; }
 .iv-head b { font-size: 16px; }
 .iv-head small { display: block; margin-top: 2px; font-size: 11px; color: var(--app-text-3); }
+.iv-class { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin: 8px 12px 0; padding: 12px 12px; border-radius: 12px;
+  background: rgba(27, 46, 107, 0.06); border: 1px dashed rgba(27, 46, 107, 0.35); }
+.iv-class .iv-code { font-size: 20px; letter-spacing: 3px; }
+.iv-empty-code { margin: 10px 14px 0; padding: 10px 12px; border-radius: 10px; font-size: 12px;
+  color: var(--app-text-3); background: rgba(0, 0, 0, 0.03); }
 .iv-list { max-height: 46vh; overflow-y: auto; padding: 0 10px; }
 .iv-row { display: flex; align-items: center; gap: 10px; padding: 10px 10px;
   border-bottom: 1px solid var(--app-card-border, #eef1f7); }
