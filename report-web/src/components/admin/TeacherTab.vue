@@ -260,7 +260,8 @@ function roleName(r: string) {
 }
 
 async function loadUsers() {
-  const qs = new URLSearchParams({ page: '1', size: '100' })
+  // 全校教职工 500+：size=100 且无翻页会静默截断，id 靠后的生活老师/门卫整段看不到（后端钳值上限 1000）
+  const qs = new URLSearchParams({ page: '1', size: '1000' })
   if (roleFilter.value) qs.set('role', roleFilter.value)
   if (keyword.value.trim()) qs.set('keyword', keyword.value.trim())
   // 批49：adminAccess/scoreAll 权限点标志由 user/list 批量下发（免逐行 N+1）

@@ -180,7 +180,7 @@ const directorBindings = ref<any[]>([])
 async function load() {
   grades.value = await api<any[]>('/api/admin/grade')
   classList.value = await api<any[]>('/api/admin/class/list')
-  const d = await api<{ records: any[] }>('/api/admin/user/list?page=1&size=100')
+  const d = await api<{ records: any[] }>('/api/admin/user/list?page=1&size=1000')
   teachers.value = d.records.filter((u: any) => u.role === 'HEAD_TEACHER' || u.role === 'TEACHER')
   bindings.value = await api<any[]>('/api/admin/grade-binding')
   directorBindings.value = await api<any[]>('/api/admin/grade-binding?duty=GRADE_DIRECTOR')
