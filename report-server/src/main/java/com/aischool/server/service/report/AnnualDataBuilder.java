@@ -320,7 +320,8 @@ public class AnnualDataBuilder {
             row.put("date", mm.getCreateTime().toLocalDate().format(DATE_FMT));
             row.put("sceneTag", mm.getSceneTag());
             row.put("note", mm.getNote() == null ? "" : mm.getNote());
-            row.put("photo", photoDataUri(mm.getPhotoUrl()));
+            row.put("photo", photoDataUri(mm.getPhotoUrl() == null ? null
+                    : mm.getPhotoUrl().split(",")[0])); // 批62 多图：报告版式取首张
             out.add(row);
         }
         return out;

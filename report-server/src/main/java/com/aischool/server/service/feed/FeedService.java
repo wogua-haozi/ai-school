@@ -122,7 +122,16 @@ public class FeedService {
                 Map<String, Object> mi = item("微光", null, classNames,
                         m.getSceneTag(), m.getNote(), teacherNames.get(m.getTeacherId()), m.getCreateTime());
                 mi.put("momentId", m.getId());
-                mi.put("photoUrl", "/api/moment/file/" + m.getId());
+                // 批62 多图：photoUrl=首张（file 接口默认 i=0），photoUrls=全量（?i= 索引）
+                List<String> urls = new ArrayList<>();
+                if (m.getPhotoUrl() != null && !m.getPhotoUrl().isBlank()) {
+                    String[] parts = m.getPhotoUrl().split(",");
+                    for (int i = 0; i < parts.length; i++) {
+                        urls.add("/api/moment/file/" + m.getId() + "?i=" + i);
+                    }
+                }
+                mi.put("photoUrl", urls.isEmpty() ? null : urls.get(0));
+                mi.put("photoUrls", urls);
                 mi.put("studentNames", names);
                 items.add(mi);
             }

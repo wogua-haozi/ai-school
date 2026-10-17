@@ -40,8 +40,8 @@ public class MomentController {
                                                    @RequestParam(required = false) List<Long> studentIds,
                                                    @RequestParam String sceneTag,
                                                    @RequestParam(required = false) String note,
-                                                   @RequestParam("photo") MultipartFile photo) {
-        return ApiResponse.ok(momentService.create(AuthUtil.current(), classId, studentIds, sceneTag, note, photo));
+                                                   @RequestParam("photos") List<MultipartFile> photos) {
+        return ApiResponse.ok(momentService.create(AuthUtil.current(), classId, studentIds, sceneTag, note, photos));
     }
 
     /** 场景标签字典（批6 漏项H：教师端下拉用，家长 403） */
@@ -84,17 +84,22 @@ public class MomentController {
     }
 
     /** 照片预览（inline）。流式+ETag+Cache-Control：家长端万人级拉图热路径，
-        命中缓存/304 后 MinIO 与本服务带宽近似归零（同 ContentController 模式） */
+        命中缓存/304 后 MinIO 与本服务带宽近似归零（同 ContentController 模式）。
+        批62 多图：?i= 索引（默认 0=首张），photo_url 逗号分隔多对象名 */
     @GetMapping("/file/{id}")
-    public ResponseEntity<InputStreamResource> file(@PathVariable Long id) {
+    public ResponseEntity<InputStreamResource> file(@PathVariable Long id,
+                                                    @RequestParam(defaultValue = "0") int i) {
         Moment m = momentMapper.selectById(id);
-        if (m == null || m.getPhotoUrl() == null) {
+        String[] parts = m == null || m.getPhotoUrl() == null
+                ? new String[0] : m.getPhotoUrl().split(",");
+        if (i < 0 || i >= parts.length) {
             throw new BizException(404, "照片不存在");
         }
-        InputStream in = pdfStore.download(m.getPhotoUrl());
+        String objectName = parts[i];
+        InputStream in = pdfStore.download(objectName);
         return ResponseEntity.ok()
-                .contentType(MediaType.parseMediaType(contentTypeOf(m.getPhotoUrl())))
-                .eTag("\"" + m.getPhotoUrl() + "\"")
+                .contentType(MediaType.parseMediaType(contentTypeOf(objectName)))
+                .eTag("\"" + objectName + "\"")
                 .cacheControl(CacheControl.maxAge(Duration.ofHours(1)).cachePublic())
                 .body(new InputStreamResource(in));
     }

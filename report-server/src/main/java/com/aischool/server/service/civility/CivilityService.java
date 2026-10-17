@@ -148,13 +148,14 @@ public class CivilityService {
 
     // ───────── 批43：班级整体加减分（进文明班评比，不落具体学生、不进个人档案） ─────────
 
-    /** 班级记分写权限（批56③ 拍板）：当日值日老师可记任意班 + 管理员/领导兜底。
+    /** 班级记分写权限（批56③ 拍板）：当日值日老师可记任意班 + 管理员/领导兜底；
+     *  生活老师（DORM）放行记宿舍类分（批62：宿舍评比归生活老师，不限值日排班）。
      *  原班主任本班/级长/学成中心主任口径废止（对齐原软件德育巡检玩法——值日老师记分）；
      *  值日排班由校方在管理端「值班排班」维护，未排班时除管理员/领导外无人可记。 */
     private void checkClassScoreAllowed() {
         var user = AuthUtil.current();
         String role = user.role();
-        if ("ADMIN".equals(role) || "LEADER".equals(role)) {
+        if ("ADMIN".equals(role) || "LEADER".equals(role) || "DORM".equals(role)) {
             return;
         }
         if (dutyService.isOnDuty(user.userId(), LocalDate.now())) {

@@ -212,9 +212,14 @@ public class AdminArchiveController {
         for (Moment m : momentMapper.selectList(new LambdaQueryWrapper<Moment>()
                 .eq(Moment::getClassId, classId))) {
             if (m.getPhotoUrl() != null && !m.getPhotoUrl().isBlank()) {
-                b.moments.add(new ArchiveFile(null,
-                        (m.getCreateTime() == null ? "" : m.getCreateTime().format(day)) + "-" + m.getSceneTag(),
-                        m.getPhotoUrl()));
+                String title = (m.getCreateTime() == null ? "" : m.getCreateTime().format(day))
+                        + "-" + m.getSceneTag();
+                // 批62 多图：photo_url 逗号分隔，逐张入包（序号后缀）
+                String[] objs = m.getPhotoUrl().split(",");
+                for (int i = 0; i < objs.length; i++) {
+                    b.moments.add(new ArchiveFile(null,
+                            title + (objs.length > 1 ? "-" + (i + 1) : ""), objs[i]));
+                }
             }
         }
         for (StudentLeave l : leaveMapper.selectList(new LambdaQueryWrapper<StudentLeave>()

@@ -40,7 +40,8 @@
       </div>
       <div v-if="moments.length" class="mo-row">
         <div v-for="m in moments" :key="m.id" class="mo-card">
-          <MomentPhoto :url="m.photoUrl" @tap="(src) => photoPreview?.open([src])" />
+          <MomentPhoto :url="m.photoUrl" @tap="(src) => openMoment(m, src)" />
+          <span v-if="(m.photoUrls?.length ?? 0) > 1" class="mo-n">{{ m.photoUrls?.length }}张</span>
           <span class="mo-tag">{{ m.sceneTag }}</span>
         </div>
       </div>
@@ -117,7 +118,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { showSuccessToast, showToast } from 'vant'
-import { api } from '../api/http'
+import { api, fetchBlob } from '../api/http'
 import { useAuthStore } from '../stores/auth'
 import { useAssetStore } from '../stores/asset'
 import MomentPhoto from '../components/MomentPhoto.vue'
@@ -126,7 +127,7 @@ import PhotoPreview from '../components/PhotoPreview.vue'
 
 interface Cls { id: number; name: string }
 interface Stu { id: number; name: string; studentNo?: string; gender?: string }
-interface MomentItem { id: number; photoUrl: string; sceneTag: string; note: string }
+interface MomentItem { id: number; photoUrl: string; photoUrls?: string[]; sceneTag: string; note: string }
 
 const classes = ref<Cls[]>([])
 const classId = ref<number>()
@@ -211,6 +212,22 @@ async function loadMoments() {
     .then((d) => (moments.value = d)).catch(() => (moments.value = []))
 }
 
+/** 批62 多图：小卡只显首张（角标示张数），点击拉齐该条全部照片全屏轮播（缓存避免重复拉流） */
+const multiUrls = new Map<number, string[]>()
+async function openMoment(m: MomentItem, first: string) {
+  const urls = m.photoUrls?.length ? m.photoUrls : [m.photoUrl]
+  if (urls.length <= 1) { photoPreview.value?.open([first]); return }
+  let list = multiUrls.get(m.id)
+  if (!list) {
+    list = []
+    for (const u of urls) {
+      try { list.push(URL.createObjectURL(await fetchBlob(u))) } catch { /* 缺失跳过 */ }
+    }
+    multiUrls.set(m.id, list)
+  }
+  photoPreview.value?.open(list.length ? list : [first], 0)
+}
+
 /** 头像底色：按姓名散列到一组柔和深浅蓝/暖色 */
 const palette = ['#A8232B', '#7C4DD8', '#0D9467', '#B07A1C', '#D6567A', '#3A7CA5']
 function avaColor(name: string) {
@@ -290,6 +307,9 @@ onMounted(async () => {
 .mo-card { position: relative; flex: none; width: 112px; height: 148px;
   border-radius: 12px; overflow: hidden; }
 .mo-tag { position: absolute; left: 6px; bottom: 6px; padding: 2px 8px;
+  border-radius: 999px; background: rgba(13,22,50,.55); color: #fff;
+  font-size: 10px; backdrop-filter: blur(4px); }
+.mo-n { position: absolute; right: 6px; bottom: 6px; padding: 2px 8px;
   border-radius: 999px; background: rgba(13,22,50,.55); color: #fff;
   font-size: 10px; backdrop-filter: blur(4px); }
 .mo-empty { display: flex; align-items: center; justify-content: center; gap: 6px;

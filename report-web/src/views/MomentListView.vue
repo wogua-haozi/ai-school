@@ -14,8 +14,8 @@
     <!-- 照片墙：2 列竖卡，图上场景胶囊，图下学生/日期/备注 -->
     <div v-if="filtered.length" class="wall">
       <div v-for="m in filtered" :key="m.id" class="cell app-card" :data-id="m.id">
-        <div class="ph" @click="preview(m)">
-          <MomentPhoto :url="m.photoUrl" @tap="preview(m)" />
+        <div class="ph">
+          <MomentPhotos :urls="m.photoUrls ?? [m.photoUrl]" @tap="onPhotoTap" />
           <span class="p-tag">{{ m.sceneTag }}</span>
         </div>
         <div class="info">
@@ -49,7 +49,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api/http'
-import MomentPhoto from '../components/MomentPhoto.vue'
+import MomentPhotos from '../components/MomentPhotos.vue'
 import PhotoPreview from '../components/PhotoPreview.vue'
 
 /** 场景标签字典（后端 t_moment_tag，含教师自建） */
@@ -57,7 +57,7 @@ const sceneTags = ref<string[]>([])
 
 interface Stu { id: number; name: string }
 interface MomentItem {
-  id: number; photoUrl: string; sceneTag: string; note: string
+  id: number; photoUrl: string; photoUrls?: string[]; sceneTag: string; note: string
   createTime?: string; teacherName?: string; students?: Stu[]
 }
 
@@ -112,10 +112,9 @@ function goStudent(m: MomentItem) {
   if (m.students?.length === 1) router.push(`/student/${m.students[0].id}`)
 }
 
-async function preview(m: MomentItem) {
-  // 取已渲染的 objectURL（MomentPhoto 组件负责带鉴权拉取）
-  const el = document.querySelector<HTMLElement>(`.cell[data-id="${m.id}"] img`)
-  if (el?.src) photoPreview.value?.open([el.src])
+/** 批62 多图：宫格点击 → 全屏轮播（MomentPhotos 已带鉴权拉好 objectURL） */
+function onPhotoTap(srcs: string[], idx: number) {
+  photoPreview.value?.open(srcs, idx)
 }
 
 /** 下拉刷新：重拉当前班级微光 */
@@ -153,8 +152,8 @@ onMounted(async () => {
 /* 2 列照片墙 */
 .wall { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
 .cell { overflow: hidden; cursor: default; }
-.ph { position: relative; aspect-ratio: 3/4; background: #F2F5FB; }
-.ph :deep(img) { width: 100%; height: 100%; object-fit: cover; }
+/* 批62 多图：去掉固定 3/4 高度，宫格按片数自适应（1=大图 ≤340，4+=三列方格） */
+.ph { position: relative; background: #F2F5FB; }
 .p-tag { position: absolute; left: 8px; bottom: 8px; padding: 2px 9px; border-radius: 999px;
   background: rgba(13,22,50,.55); color: #fff; font-size: 10px; backdrop-filter: blur(4px); }
 .info { padding: 9px 11px 10px; }

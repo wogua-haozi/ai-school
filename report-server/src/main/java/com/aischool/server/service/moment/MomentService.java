@@ -51,21 +51,29 @@ public class MomentService {
     private final PdfStoreService pdfStore;
     private final CoinLedgerService coinLedger;
 
-    /** 创建一条微光：照片存 MinIO（moment/{classId}/{uuid}.{ext}）+ 主表 + 学生关联 */
+    /** 创建一条微光（批62 多图）：照片存 MinIO（moment/{classId}/{uuid}.{ext}，1~9 张，
+        photo_url 逗号分隔）+ 主表 + 学生关联 */
     @Transactional
     public Map<String, Object> create(UserPrincipal user, Long classId, List<Long> studentIds,
-                                      String sceneTag, String note, MultipartFile photo) {
-        if (photo == null || photo.isEmpty()) {
+                                      String sceneTag, String note, List<MultipartFile> photos) {
+        List<MultipartFile> valid = photos == null ? List.of()
+                : photos.stream().filter(p -> p != null && !p.isEmpty()).toList();
+        if (valid.isEmpty()) {
             throw new BizException(400, "请先拍照或选择照片");
         }
-        if (photo.getSize() > MAX_SIZE) {
-            throw new BizException(400, "照片不能超过 10MB");
+        if (valid.size() > 9) {
+            throw new BizException(400, "一次最多上传 9 张照片");
         }
-        String original = photo.getOriginalFilename() == null ? "" : photo.getOriginalFilename();
-        String ext = original.contains(".")
-                ? original.substring(original.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT) : "";
-        if (!ext.equals("jpg") && !ext.equals("jpeg") && !ext.equals("png")) {
-            throw new BizException(400, "仅支持 jpg/jpeg/png 格式");
+        for (MultipartFile photo : valid) {
+            if (photo.getSize() > MAX_SIZE) {
+                throw new BizException(400, "照片不能超过 10MB");
+            }
+            String original = photo.getOriginalFilename() == null ? "" : photo.getOriginalFilename();
+            String ext = original.contains(".")
+                    ? original.substring(original.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT) : "";
+            if (!ext.equals("jpg") && !ext.equals("jpeg") && !ext.equals("png")) {
+                throw new BizException(400, "仅支持 jpg/jpeg/png 格式");
+            }
         }
         if (sceneTag == null || sceneTag.isBlank()) {
             throw new BizException(400, "请选择场景标签");
@@ -85,19 +93,26 @@ public class MomentService {
             throw new BizException(400, "存在不属于该班级的学生");
         }
 
-        byte[] bytes;
-        try {
-            bytes = photo.getBytes();
-        } catch (Exception e) {
-            throw new BizException(400, "读取照片失败");
+        List<String> objectNames = new ArrayList<>();
+        for (MultipartFile photo : valid) {
+            byte[] bytes;
+            try {
+                bytes = photo.getBytes();
+            } catch (Exception e) {
+                throw new BizException(400, "读取照片失败");
+            }
+            String original = photo.getOriginalFilename() == null ? "" : photo.getOriginalFilename();
+            String ext = original.contains(".")
+                    ? original.substring(original.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT) : "";
+            String objectName = "moment/" + classId + "/" + UUID.randomUUID() + "." + ext;
+            pdfStore.upload(objectName, new ByteArrayInputStream(bytes), bytes.length, photo.getContentType());
+            objectNames.add(objectName);
         }
-        String objectName = "moment/" + classId + "/" + UUID.randomUUID() + "." + ext;
-        pdfStore.upload(objectName, new ByteArrayInputStream(bytes), bytes.length, photo.getContentType());
 
         Moment m = new Moment();
         m.setTeacherId(user.userId());
         m.setClassId(classId);
-        m.setPhotoUrl(objectName);
+        m.setPhotoUrl(String.join(",", objectNames));
         m.setSceneTag(sceneTag.trim());
         m.setNote(note == null ? null : note.trim());
         m.setSource("TEACHER");
@@ -218,8 +233,10 @@ public class MomentService {
         momentMapper.deleteById(id);
         momentStudentMapper.delete(new LambdaQueryWrapper<MomentStudent>()
                 .eq(MomentStudent::getMomentId, id));
-        if (m.getPhotoUrl() != null) {   // EVAL_SYNC（加分同步）无照片对象可删
-            pdfStore.delete(m.getPhotoUrl());
+        if (m.getPhotoUrl() != null) {   // EVAL_SYNC（加分同步）无照片对象可删；批62 多图逐个删
+            for (String objectName : m.getPhotoUrl().split(",")) {
+                pdfStore.delete(objectName);
+            }
         }
         // 批48：删手动微光连带冲正已发的 1 扬长币（reverse 无行=本批之前的老数据没发过币，自然不冲）
         if (!"EVAL_SYNC".equals(m.getSource())) {
@@ -256,6 +273,13 @@ public class MomentService {
                     .map(s -> Map.<String, Object>of("id", s.getId(), "name", s.getName()))
                     .toList();
             // EVAL_SYNC（加分同步）无照片：photoUrl 下发 null，前端渲染文字卡
+            // 批62 多图：photoUrl=首张（兼容单图消费端），photoUrls=全量（?i= 索引）
+            List<String> parts = m.getPhotoUrl() == null || m.getPhotoUrl().isBlank()
+                    ? List.of() : List.of(m.getPhotoUrl().split(","));
+            List<String> urls = new ArrayList<>();
+            for (int i = 0; i < parts.size(); i++) {
+                urls.add("/api/moment/file/" + m.getId() + "?i=" + i);
+            }
             Map<String, Object> row = new java.util.LinkedHashMap<>();
             row.put("id", m.getId());
             row.put("note", m.getNote() == null ? "" : m.getNote());
@@ -265,7 +289,8 @@ public class MomentService {
             row.put("teacherId", m.getTeacherId());
             row.put("teacherName", teacherNames.getOrDefault(m.getTeacherId(), ""));
             row.put("students", students);
-            row.put("photoUrl", m.getPhotoUrl() == null ? null : "/api/moment/file/" + m.getId());
+            row.put("photoUrl", urls.isEmpty() ? null : urls.get(0));
+            row.put("photoUrls", urls);
             out.add(row);
         }
         return out;

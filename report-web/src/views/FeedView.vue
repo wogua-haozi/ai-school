@@ -29,7 +29,7 @@
         <p class="c-meta">{{ f.className || '全校' }}<template v-if="f.typeLabel"> · {{ f.typeLabel }}</template></p>
         <p class="c-body">{{ f.content || f.title }}</p>
         <div v-if="f.photoUrl" class="c-photo">
-          <MomentPhoto :url="f.photoUrl" @tap="(src) => photoPreview?.open([src])" />
+          <MomentPhotos :urls="f.photoUrls ?? [f.photoUrl]" @tap="(srcs, idx) => photoPreview?.open(srcs, idx)" />
         </div>
         <div class="c-foot">
           <span class="c-date">{{ fullTime(f.time) }}</span>
@@ -55,13 +55,13 @@ import { texAt } from '../utils/tex'
 
 // 批52③ 37 槽轮换池：本页基准 12、静态位 1，骨架/列表轮换续在 13
 const tex = (i: number) => texAt(13 + i)
-import MomentPhoto from '../components/MomentPhoto.vue'
+import MomentPhotos from '../components/MomentPhotos.vue'
 import PhotoPreview from '../components/PhotoPreview.vue'
 
 interface FeedItem {
   type: string; title?: string; content?: string; teacherName?: string; time?: string
   studentId?: number; studentName?: string; className?: string; typeLabel?: string
-  photoUrl?: string; studentNames?: string
+  photoUrl?: string; photoUrls?: string[]; studentNames?: string
 }
 
 const feed = ref<FeedItem[]>([])
@@ -142,5 +142,6 @@ onMounted(load)
 .c-comment { background: #E8F6EF; color: #0D9467; }
 .c-act { background: #F3EAFE; color: #7C4DD8; }
 .c-moment { background: #FDEEE2; color: #EA580C; }
-.c-photo { height: 170px; margin: 8px 0; border-radius: 10px; overflow: hidden; cursor: zoom-in; }
+/* 批62 多图：不锁高度，宫格按片数自适应 */
+.c-photo { margin: 8px 0; border-radius: 10px; overflow: hidden; cursor: zoom-in; }
 </style>

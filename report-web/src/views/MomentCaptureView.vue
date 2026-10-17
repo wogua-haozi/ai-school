@@ -14,17 +14,28 @@
     </div>
 
     <template v-else>
-      <!-- ① 照片 -->
-      <div class="app-card photo-card" :class="{ empty: !photoUrl }" @click="pickPhoto">
-        <img v-if="photoUrl" class="preview" :src="photoUrl" alt="">
-        <div v-else class="empty-photo">
+      <!-- ① 照片（批62 多图：拍照/相册，1~9 张） -->
+      <div v-if="!photoFiles.length" class="app-card photo-card empty" @click="pickPhoto">
+        <div class="empty-photo">
           <span class="cam"><van-icon name="photograph" /></span>
           <p>点击拍照 / 选择照片</p>
-          <p class="tip">记录学生此刻的闪光瞬间</p>
+          <p class="tip">记录学生此刻的闪光瞬间（可多选，最多 9 张）</p>
         </div>
-        <button v-if="photoUrl" class="retake" type="button" @click.stop="pickPhoto">
-          <van-icon name="replay" /> 重拍
-        </button>
+      </div>
+      <div v-else class="app-card sec photos-card">
+        <div class="app-sec" style="margin: 0 0 10px">照片（{{ photoFiles.length }}/9）</div>
+        <div class="p-grid">
+          <div v-for="(u, i) in previews" :key="i" class="p-cell">
+            <img :src="u" alt="">
+            <button class="p-del" type="button" @click.stop="removePhoto(i)">
+              <van-icon name="cross" />
+            </button>
+          </div>
+          <div v-if="photoFiles.length < 9" class="p-cell add" @click="pickPhoto">
+            <van-icon name="plus" />
+            <span>添加</span>
+          </div>
+        </div>
       </div>
 
       <!-- ② 场景标签（字典来自后端，可自建） -->
@@ -78,8 +89,8 @@
       </div>
     </template>
 
-    <!-- 浏览器形态的文件选择（App 形态走系统相机/相册） -->
-    <input ref="fileInput" type="file" accept="image/jpeg,image/png" class="hide" @change="onFile" />
+    <!-- 浏览器形态的文件选择（App 形态走系统相机/相册；multiple 支持一次多选） -->
+    <input ref="fileInput" type="file" accept="image/jpeg,image/png" multiple class="hide" @change="onFile" />
 
     <van-popup v-model:show="clsOpen" position="bottom" round>
       <van-picker title="选择班级" :columns="clsColumns" @confirm="onCls" @cancel="clsOpen = false" />
@@ -102,8 +113,9 @@ const newTag = ref('')
 const tagInput = ref<HTMLInputElement>()
 
 const route = useRoute()
-const photoFile = ref<File>()
-const photoUrl = ref('')
+/* 批62 多图：photoFiles 1~9 张，previews 为对应 objectURL */
+const photoFiles = ref<File[]>([])
+const previews = ref<string[]>([])
 const sceneTag = ref('')
 const note = ref('')
 const picked = ref(new Set<number>())
@@ -125,9 +137,9 @@ const filteredStudents = computed(() => {
   const k = stuKeyword.value.trim()
   return k ? students.value.filter((s) => s.name.includes(k)) : students.value
 })
-const canSubmit = computed(() => !!photoFile.value && !!sceneTag.value && picked.value.size > 0)
+const canSubmit = computed(() => photoFiles.value.length > 0 && !!sceneTag.value && picked.value.size > 0)
 
-/* App 形态走系统相机/相册弹窗；浏览器形态走文件选择 */
+/* App 形态走系统相机/相册弹窗（每次一张，点「添加」续拍）；浏览器形态走文件选择（可多选） */
 async function pickPhoto() {
   if (Capacitor.isNativePlatform()) {
     try {
@@ -137,7 +149,7 @@ async function pickPhoto() {
         source: CameraSource.Prompt, allowEditing: false,
       })
       const blob = await (await fetch(p.dataUrl!)).blob()
-      setPhoto(new File([blob], `photo.${p.format || 'jpg'}`, { type: blob.type || 'image/jpeg' }))
+      addPhotos([new File([blob], `photo.${p.format || 'jpg'}`, { type: blob.type || 'image/jpeg' })])
     } catch { /* 用户取消 */ }
   } else {
     fileInput.value?.click()
@@ -145,15 +157,23 @@ async function pickPhoto() {
 }
 
 function onFile(e: Event) {
-  const f = (e.target as HTMLInputElement).files?.[0]
-  if (f) setPhoto(f)
+  const files = Array.from((e.target as HTMLInputElement).files ?? [])
+  if (files.length) addPhotos(files)
   ;(e.target as HTMLInputElement).value = '' // 允许重选同一张
 }
 
-function setPhoto(f: File) {
-  if (photoUrl.value) URL.revokeObjectURL(photoUrl.value)
-  photoFile.value = f
-  photoUrl.value = URL.createObjectURL(f)
+function addPhotos(files: File[]) {
+  const room = 9 - photoFiles.value.length
+  const take = files.slice(0, room)
+  if (files.length > room) showToast('一次最多 9 张照片')
+  photoFiles.value = [...photoFiles.value, ...take]
+  previews.value = [...previews.value, ...take.map((f) => URL.createObjectURL(f))]
+}
+
+function removePhoto(i: number) {
+  URL.revokeObjectURL(previews.value[i])
+  photoFiles.value = photoFiles.value.filter((_, k) => k !== i)
+  previews.value = previews.value.filter((_, k) => k !== i)
 }
 
 function toggle(id: number) {
@@ -186,13 +206,13 @@ async function submit() {
   submitting.value = true
   try {
     const form = new FormData()
-    form.append('photo', photoFile.value!)
+    for (const f of photoFiles.value) form.append('photos', f)
     form.append('classId', String(classId.value))
     form.append('sceneTag', sceneTag.value)
     if (note.value.trim()) form.append('note', note.value.trim())
     for (const id of picked.value) form.append('studentIds', String(id))
     await apiForm('/api/moment', form)
-    donePhoto.value = photoUrl.value
+    donePhoto.value = previews.value[0]
     doneCount.value = picked.value.size
     done.value = true
   } catch (e) {
@@ -202,12 +222,12 @@ async function submit() {
   }
 }
 
-/** 再拍一条：清空全部选择（班级保留） */
+/** 再拍一条：清空全部选择（班级保留；成功态照片由 done 卡展示，不回收） */
 function reset() {
   done.value = false
-  if (photoUrl.value && photoUrl.value !== donePhoto.value) URL.revokeObjectURL(photoUrl.value)
-  photoFile.value = undefined
-  photoUrl.value = ''
+  previews.value.forEach((u) => { if (u !== donePhoto.value) URL.revokeObjectURL(u) })
+  photoFiles.value = []
+  previews.value = []
   sceneTag.value = ''
   note.value = ''
   stuKeyword.value = ''
@@ -253,20 +273,29 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-/* 照片卡：空态虚线引导，有图全幅预览 + 重拍角钮 */
+/* 照片卡：空态虚线引导；批62 多图=宫格预览 + 添加/删除 */
 .photo-card { position: relative; overflow: hidden; min-height: 220px;
   display: flex; align-items: center; justify-content: center; cursor: pointer; }
 .photo-card.empty { border: 1.5px dashed #B9C8E4; background: #F7F9FD; }
-.preview { width: 100%; max-height: 340px; object-fit: cover; display: block; }
 .empty-photo { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 40px 0; }
 .cam { display: flex; align-items: center; justify-content: center; width: 56px; height: 56px;
   border-radius: 50%; background: linear-gradient(150deg, #8C1D23, #A8232B);
   color: #fff; font-size: 26px; box-shadow: 0 6px 16px rgba(30,58,138,.3); }
 .empty-photo p { margin: 0; font-size: 14px; color: var(--app-text-2); }
 .empty-photo .tip { font-size: 12px; color: var(--app-text-3); }
-.retake { position: absolute; right: 12px; bottom: 12px; display: flex; align-items: center; gap: 4px;
-  padding: 6px 14px; border: none; border-radius: 999px; background: rgba(13,22,50,.6);
-  color: #fff; font-size: 12px; cursor: pointer; backdrop-filter: blur(4px); }
+
+/* 多图宫格（采集页） */
+.photos-card { padding: 14px 14px 12px; }
+.p-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.p-cell { position: relative; aspect-ratio: 1; overflow: hidden; border-radius: 8px; }
+.p-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.p-cell.add { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  border: 1.5px dashed #B9C8E4; background: #F7F9FD; color: var(--app-text-3);
+  font-size: 12px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.p-cell.add .van-icon { font-size: 22px; }
+.p-del { position: absolute; top: 4px; right: 4px; display: flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border: none; border-radius: 50%; background: rgba(13,22,50,.55);
+  color: #fff; font-size: 13px; cursor: pointer; }
 
 .sec { margin-top: 12px; padding: 14px 14px 12px; }
 

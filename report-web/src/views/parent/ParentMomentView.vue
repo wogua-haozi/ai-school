@@ -34,7 +34,7 @@
 
     <!-- 微光流：照片 + 标签 + 记录人 + 备注；自己上传的可删 -->
     <div v-for="m in rows" :key="m.id" class="app-card item" :class="tex(m.id)">
-      <img v-if="photoCache[m.id]" class="photo" :src="photoCache[m.id]" alt="" @click="preview(m)">
+      <MomentPhotos v-if="m.photoUrls?.length" :urls="m.photoUrls" @tap="onPhotoTap" />
       <div class="i-meta">
         <span class="app-chip tag" :class="m.source === 'PARENT' ? 'mine' : (m.source === 'EVAL_SYNC' ? 'sync' : 'tch')">
           {{ m.source === 'EVAL_SYNC' ? '加分 · ' + m.sceneTag : m.sceneTag }}</span>
@@ -54,16 +54,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { showConfirmDialog, showImagePreview, showToast } from 'vant'
 import { Capacitor } from '@capacitor/core'
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
-import { api, apiForm, fetchBlob } from '../../api/http'
+import { api, apiForm } from '../../api/http'
+import MomentPhotos from '../../components/MomentPhotos.vue'
 import { texAt } from '../../utils/tex'
 
 interface Kid { studentId: number; name: string }
 interface Mom { id: number; note: string; sceneTag: string; source: string; own: boolean
-  createTime: string; teacherName: string; photoUrl: string }
+  createTime: string; teacherName: string; photoUrls?: string[] }
 
 const children = ref<Kid[]>([])
 const curId = ref<number>()
@@ -75,7 +76,6 @@ const photoFile = ref<File>()
 const photoUrl = ref('')
 const submitting = ref(false)
 const fileInput = ref<HTMLInputElement>()
-const photoCache = reactive<Record<number, string>>({})
 
 const curName = computed(() => children.value.find((c) => c.studentId === curId.value)?.name ?? '')
 
@@ -95,14 +95,6 @@ async function load() {
   try {
     if (curId.value) {
       rows.value = await api<Mom[]>(`/api/parent/children/${curId.value}/moments?limit=50`)
-      for (const m of rows.value) {
-        if (!photoCache[m.id]) {
-          try {
-            const blob = await fetchBlob(m.photoUrl)
-            photoCache[m.id] = URL.createObjectURL(blob)
-          } catch { /* 照片缺失不阻塞列表 */ }
-        }
-      }
     }
   } finally {
     loading.value = false
@@ -177,9 +169,9 @@ async function remove(m: Mom) {
   await load()
 }
 
-function preview(m: Mom) {
-  const src = photoCache[m.id]
-  if (src) showImagePreview([src])
+/** 批62 多图：宫格点击 → 全屏轮播（MomentPhotos 已拉好 objectURL） */
+function onPhotoTap(srcs: string[], idx: number) {
+  showImagePreview({ images: srcs, startPosition: idx })
 }
 
 onMounted(async () => {
@@ -213,7 +205,6 @@ onMounted(async () => {
 .empty { text-align: center; color: var(--app-text-2); font-size: 13px; padding: 26px 0; }
 
 .item { padding: 0; overflow: hidden; margin-bottom: 12px; }
-.photo { display: block; width: 100%; max-height: 320px; object-fit: cover; }
 .i-meta { display: flex; align-items: center; gap: 8px; padding: 10px 14px 0; }
 .tag { flex: none; }
 .tag.mine { color: var(--shine-red); background: #fff; border: 1px solid var(--shine-red-soft); }

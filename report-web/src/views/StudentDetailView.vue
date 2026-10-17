@@ -29,7 +29,8 @@
       <div class="mo-grid">
         <div v-for="m in moments" :key="m.id" class="mo-item">
           <template v-if="m.photoUrl">
-            <MomentPhoto :url="m.photoUrl" @tap="previewMoments" />
+            <MomentPhoto :url="m.photoUrl" @tap="(src) => previewMoments(m, src)" />
+            <span v-if="(m.photoUrls?.length ?? 0) > 1" class="mo-n">{{ m.photoUrls?.length }}张</span>
             <span class="mo-tag">{{ m.sceneTag }}</span>
           </template>
           <!-- 加分同步微光（无照片）：文字卡 -->
@@ -97,7 +98,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { showFailToast, showSuccessToast, showConfirmDialog } from 'vant'
-import { api } from '../api/http'
+import { api, fetchBlob } from '../api/http'
 import MomentPhoto from '../components/MomentPhoto.vue'
 import PhotoPreview from '../components/PhotoPreview.vue'
 import { useAssetStore } from '../stores/asset'
@@ -117,7 +118,7 @@ const dormText = computed(() => {
 })
 const className = ref('')
 const termId = ref<number>()
-const moments = ref<{ id: number; photoUrl: string | null; sceneTag: string; note?: string; source?: string }[]>([])
+const moments = ref<{ id: number; photoUrl: string | null; photoUrls?: string[]; sceneTag: string; note?: string; source?: string }[]>([])
 const photoPreview = ref<InstanceType<typeof PhotoPreview>>()
 
 /* 批8.5：可编辑（管理员/领导/该班班主任）→ 编辑资料 + 家长账号卡 */
@@ -188,8 +189,21 @@ async function loadDetail() {
   }
 }
 
-/** 闪光时刻全屏预览：收集整墙已加载照片，可左右滑动，当前张定位 */
-function previewMoments(cur: string) {
+/** 闪光时刻全屏预览：单图=整墙已加载照片左右滑；批62 多图=拉齐该条全部照片轮播（缓存避免重复拉流） */
+const multiUrls = new Map<number, string[]>()
+async function previewMoments(m: { id: number; photoUrl: string | null; photoUrls?: string[] }, cur: string) {
+  const urls = m.photoUrls?.length ? m.photoUrls : (m.photoUrl ? [m.photoUrl] : [])
+  if (urls.length > 1) {
+    let list = multiUrls.get(m.id)
+    if (!list) {
+      list = []
+      for (const u of urls) {
+        try { list.push(URL.createObjectURL(await fetchBlob(u))) } catch { /* 缺失跳过 */ }
+      }
+      multiUrls.set(m.id, list)
+    }
+    if (list.length) { photoPreview.value?.open(list, 0); return }
+  }
   const all = [...document.querySelectorAll<HTMLElement>('.mo-item img')]
     .map((i) => i.src).filter(Boolean)
   photoPreview.value?.open(all.length ? all : [cur], Math.max(0, all.indexOf(cur)))
@@ -269,6 +283,9 @@ onMounted(async () => {
 .mo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .mo-item { position: relative; aspect-ratio: 1/1; border-radius: 10px; overflow: hidden; }
 .mo-tag { position: absolute; left: 4px; bottom: 4px; padding: 1px 7px;
+  border-radius: 999px; background: rgba(13,22,50,.55); color: #fff;
+  font-size: 10px; backdrop-filter: blur(4px); }
+.mo-n { position: absolute; right: 4px; bottom: 4px; padding: 1px 7px;
   border-radius: 999px; background: rgba(13,22,50,.55); color: #fff;
   font-size: 10px; backdrop-filter: blur(4px); }
 /* 加分同步微光（无照片文字卡） */
