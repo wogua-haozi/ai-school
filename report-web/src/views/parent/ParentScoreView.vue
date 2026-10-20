@@ -16,11 +16,16 @@
       <div class="s-row" v-for="s in e.subjects" :key="s.subjectName">
         <span class="s-name">{{ s.subjectName }}</span>
         <span class="s-score">{{ s.score ?? '—' }}<small v-if="s.fullScore"> / {{ s.fullScore }}</small></span>
-        <van-tag plain :type="lvType(s.level)" class="s-lv">{{ s.level ?? '—' }}</van-tag>
+        <van-tag plain :type="lvType(s.grade)" class="s-lv">{{ s.grade ?? '—' }}</van-tag>
+      </div>
+      <div v-if="e.totalGrade" class="s-row total">
+        <span class="s-name">总分等级</span>
+        <span class="s-score"></span>
+        <van-tag plain :type="lvType(e.totalGrade)" class="s-lv">{{ e.totalGrade }}</van-tag>
       </div>
     </div>
 
-    <p class="app-foot">{{ note || '等级按满分比例换算' }}</p>
+    <p class="app-foot">等级由学校评定并提供</p>
     <p class="app-foot">石实实验学校 · 石实SHINE</p>
     </van-pull-refresh>
   </div>
@@ -31,31 +36,30 @@ import { computed, onMounted, ref } from 'vue'
 import { api } from '../../api/http'
 import { texAt } from '../../utils/tex'
 
-/* 批63 家长成绩页：分数+等级（无排名，服务端白名单口径无 rank 字段），按考试分组 */
+/* 批63 家长成绩页：分数+等级（批63c 等级=校方上传；无排名，服务端白名单口径无 rank 字段），按考试分组 */
 interface Kid { studentId: number; name: string }
-interface SubjectRow { subjectName: string; score?: number; fullScore?: number; level?: string }
-interface ExamGroup { examId: number; examName: string; termName?: string; examDate?: string; subjects: SubjectRow[] }
+interface SubjectRow { subjectName: string; score?: number; fullScore?: number; grade?: string }
+interface ExamGroup { examId: number; examName: string; termName?: string; examDate?: string; totalGrade?: string; subjects: SubjectRow[] }
 
 const children = ref<Kid[]>([])
 const curId = ref<number>()
 const exams = ref<ExamGroup[]>([])
-const note = ref('')
 const loading = ref(true)
 const refreshing = ref(false)
 
 const curName = computed(() => children.value.find((c) => c.studentId === curId.value)?.name ?? '')
 
-function lvType(lv?: string) {
-  return lv === 'A' ? 'warning' : lv === 'B' ? 'primary' : lv === 'D' ? 'danger' : 'default'
+function lvType(lv?: string) { // 批63c 上传制：A 系=warning、B 系=primary、C/D 系=danger
+  const base = (lv ?? '').replace(/[+-]$/, '')
+  return base === 'A' ? 'warning' : base === 'B' ? 'primary' : base === 'C' || base === 'D' ? 'danger' : 'default'
 }
 
 async function loadKid() {
   if (!curId.value) return
   loading.value = true
   try {
-    const d = await api<{ note?: string; exams: ExamGroup[] }>(`/api/parent/children/${curId.value}/scores`)
+    const d = await api<{ exams: ExamGroup[] }>(`/api/parent/children/${curId.value}/scores`)
     exams.value = d.exams
-    note.value = d.note ?? ''
   } finally { loading.value = false }
 }
 async function reload() {
@@ -88,6 +92,8 @@ onMounted(async () => {
 .e-sub { margin: 4px 0 2px; font-size: 11px; color: var(--app-text-3); }
 .s-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--app-card-border); }
 .s-row:first-of-type { border-top: none; }
+.s-row.total { border-top: 2px solid var(--app-card-border); }
+.s-row.total .s-name { font-weight: 600; }
 .s-name { flex: 1; font-size: 13px; color: var(--app-text-1); }
 .s-score { font-size: 15px; font-weight: 600; color: var(--app-text-1); font-variant-numeric: tabular-nums; }
 .s-score small { font-size: 11px; font-weight: 400; color: var(--app-text-3); }

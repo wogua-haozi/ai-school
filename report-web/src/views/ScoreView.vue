@@ -41,8 +41,12 @@
             <span v-else>{{ row.score ?? '—' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="等级" min-width="80" align="center">
-          <template #default="{ row }">{{ row.level ?? '—' }}</template>
+        <el-table-column label="等级" min-width="90" align="center">
+          <template #default="{ row }">
+            <el-input v-if="gradeEditable" v-model="row.grade" maxlength="2" size="small"
+              style="width: 75px" placeholder="—" />
+            <span v-else>{{ row.grade ?? '—' }}</span>
+          </template>
         </el-table-column>
         <!-- 批63：排名列只对管理面角色显示（服务端已置 null，此处仅显示层） -->
         <el-table-column v-if="auth.canSeeRank" label="班级名次" min-width="100" align="center">
@@ -53,8 +57,8 @@
         </el-table-column>
       </el-table>
       <div style="margin-top: 12px">
-        <el-button type="primary" :disabled="!editable" :loading="saving" @click="save">批量保存</el-button>
-        <el-tag v-if="!editable" size="small" type="info">{{ totalMode ? '总分模式只读' : '只读（批63：仅管理员、书记、级长可录入）' }}</el-tag>
+        <el-button type="primary" :disabled="!editable && !gradeEditable" :loading="saving" @click="save">批量保存</el-button>
+        <el-tag v-if="!editable && !gradeEditable" size="small" type="info">{{ totalMode ? '总分模式只读' : '只读（批63：仅管理员、书记、级长可录入）' }}</el-tag>
       </div>
     </el-card>
     <el-empty v-else-if="loaded && examId && gradeId && !subjects.length"
@@ -184,6 +188,7 @@ const gradeId = ref<number>()
 const subjectId = ref<number>()
 const fullScore = ref<number>()
 const editable = ref(false)
+const gradeEditable = ref(false) // 批63c 等级上传通道（总分模式也开）
 const loaded = ref(false)
 const saving = ref(false)
 const examDialog = ref(false)
@@ -267,21 +272,37 @@ async function load() {
   rows.value = d.rows
   fullScore.value = d.fullScore
   editable.value = d.editable
+  gradeEditable.value = d.gradeEditable
   loaded.value = true
 }
 
 async function save() {
   saving.value = true
   try {
-    const r = await api<{ saved?: number }>('/api/score/entry', {
-      method: 'PUT',
-      json: {
-        examId: examId.value,
-        subjectId: subjectId.value,
-        rows: rows.value.map((x: any) => ({ studentId: x.studentId, score: x.score })),
-      },
-    })
-    ElMessage.success(`已保存 ${r.saved ?? rows.value.length} 条`)
+    let saved = 0
+    if (editable.value) {
+      const r = await api<{ saved?: number }>('/api/score/entry', {
+        method: 'PUT',
+        json: {
+          examId: examId.value,
+          subjectId: subjectId.value,
+          rows: rows.value.map((x: any) => ({ studentId: x.studentId, score: x.score })),
+        },
+      })
+      saved += r.saved ?? 0
+    }
+    if (gradeEditable.value) { // 批63c 等级独立通道（不动分数；总分模式 subjectId=null=总分等级）
+      const r = await api<{ saved?: number }>('/api/score/entry-grade', {
+        method: 'PUT',
+        json: {
+          examId: examId.value,
+          subjectId: totalMode() ? null : subjectId.value,
+          rows: rows.value.map((x: any) => ({ studentId: x.studentId, grade: x.grade || null })),
+        },
+      })
+      saved += r.saved ?? 0
+    }
+    ElMessage.success(`已保存 ${saved} 条`)
     await load()
   } finally {
     saving.value = false

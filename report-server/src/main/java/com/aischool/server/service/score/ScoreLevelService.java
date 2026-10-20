@@ -9,8 +9,8 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 
 /**
- * 批63 成绩等级：按满分比例现算 A/B/C/D，不入库不上传（家长与只读入口只见分数+等级，无排名）。
- * 阈值 t_sys_config：score_grade_a/b/c（百分比，默认 85/70/60，低于 c 线=D），上线前与校方确认。
+ * 批63c 起为自治窗口保留：等级已改校方上传制（t_score.grade），本类现算不再驱动任何显示。
+ * 保留能力=日后校方要系统代算时可一键切回（阈值 t_sys_config：score_grade_a/b/c 百分比默认 85/70/60，低于 c 线=D）。
  */
 @Service
 @RequiredArgsConstructor

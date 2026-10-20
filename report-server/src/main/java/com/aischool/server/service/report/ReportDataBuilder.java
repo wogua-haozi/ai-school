@@ -73,7 +73,6 @@ public class ReportDataBuilder {
     private final MomentStudentMapper momentStudentMapper;
     private final PdfStoreService pdfStore;
     private final PortraitService portraitService;
-    private final com.aischool.server.service.score.ScoreLevelService scoreLevelService;
 
     public Map<String, Object> build(Long studentId, Long termId) {
         return build(studentId, termId, null);
@@ -139,7 +138,7 @@ public class ReportDataBuilder {
         return data;
     }
 
-    /** 批63 家长版期末成绩页素材：学期最新考试各科 分数/满分/等级（等级按满分比例现算，不入库） */
+    /** 批63 家长版期末成绩页素材：学期最新考试各科 分数/满分/等级（批63c 等级=校方上传，未上传为 null；另附总分等级） */
     private Map<String, Object> buildExamScores(Student student, Term term) {
         Exam exam = latestExam(term.getId());
         Map<String, Object> m = new LinkedHashMap<>();
@@ -154,9 +153,13 @@ public class ReportDataBuilder {
                 .sorted(Comparator.comparing(es -> subjects.containsKey(es.getSubjectId())
                         ? subjects.get(es.getSubjectId()).getSort() : Integer.MAX_VALUE))
                 .toList();
-        Map<Long, Score> scoreBySubject = scoreMapper.selectList(new LambdaQueryWrapper<Score>()
-                        .eq(Score::getExamId, exam.getId()).eq(Score::getStudentId, student.getId()))
-                .stream().collect(Collectors.toMap(Score::getSubjectId, s -> s));
+        List<Score> mine = scoreMapper.selectList(new LambdaQueryWrapper<Score>()
+                .eq(Score::getExamId, exam.getId()).eq(Score::getStudentId, student.getId()));
+        Map<Long, Score> scoreBySubject = mine.stream()
+                .filter(sc -> sc.getSubjectId() != null && sc.getScore() != null) // 批63c 排除总分等级行/清分留级行
+                .collect(Collectors.toMap(Score::getSubjectId, s -> s));
+        String totalGrade = mine.stream().filter(sc -> sc.getSubjectId() == null)
+                .map(Score::getGrade).filter(Objects::nonNull).findFirst().orElse(null);
         List<Map<String, Object>> rows = new ArrayList<>();
         for (ExamSubject es : ordered) {
             Score sc = scoreBySubject.get(es.getSubjectId());
@@ -165,11 +168,12 @@ public class ReportDataBuilder {
                     ? subjects.get(es.getSubjectId()).getName() : String.valueOf(es.getSubjectId()));
             row.put("score", Num.of(sc != null ? sc.getScore() : null));
             row.put("fullScore", Num.of(es.getFullScore()));
-            row.put("level", scoreLevelService.levelOf(sc != null ? sc.getScore() : null, es.getFullScore()));
+            row.put("grade", sc != null ? sc.getGrade() : null); // 批63c 校方上传等级
             rows.add(row);
         }
         m.put("examName", exam.getName() == null ? "" : exam.getName());
         m.put("subjects", rows);
+        m.put("totalGrade", totalGrade == null ? "" : totalGrade); // 批63c 总分等级（subject_id NULL 行）
         return m;
     }
 

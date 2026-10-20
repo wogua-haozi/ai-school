@@ -54,6 +54,14 @@ public class ScoreController {
         private List<ScoreService.RowReq> rows;
     }
 
+    @Data
+    public static class GradeEntryReq {
+        @NotNull(message = "examId 不能为空")
+        private Long examId;
+        private Long subjectId; // 批63c 可空=总分等级（subject_id NULL 行）
+        private List<ScoreService.RowReq> rows;
+    }
+
     /** 建考试（批49 随上传权限收紧：ADMIN/书记/级长） */
     @PostMapping("/exam")
     public ApiResponse<Map<String, Object>> createExam(@Validated @RequestBody ExamReq req) {
@@ -149,6 +157,13 @@ public class ScoreController {
     public ApiResponse<Map<String, Object>> entry(@Validated @RequestBody EntryReq req) {
         return ApiResponse.ok(scoreService.entry(AuthUtil.current(), req.getExamId(), req.getSubjectId(),
                 req.getClassId(), req.getRows()));
+    }
+
+    /** 批63c 等级录入（上传制，不动分数）：subjectId 空=总分等级；rows.grade 空=清除 */
+    @PutMapping("/entry-grade")
+    public ApiResponse<Map<String, Object>> entryGrade(@Validated @RequestBody GradeEntryReq req) {
+        return ApiResponse.ok(scoreService.entryGrade(AuthUtil.current(), req.getExamId(),
+                req.getSubjectId(), req.getRows()));
     }
 
     /** Excel 导入（单班多科：file + examId/classId，科目列按模板表头匹配，批63） */

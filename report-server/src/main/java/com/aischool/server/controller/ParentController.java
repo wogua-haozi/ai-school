@@ -72,7 +72,6 @@ public class ParentController {
     private final ReportMapper reportMapper;
     private final TermMapper termMapper;
     private final com.aischool.server.service.score.ParentScoreService parentScoreService;
-    private final com.aischool.server.service.score.ScoreLevelService scoreLevelService;
 
     private void checkParent() {
         if (!"PARENT".equals(AuthUtil.current().role())) {
@@ -480,13 +479,11 @@ public class ParentController {
 
     // ────────────────────────── 批63：成绩（分数+等级，无排名） ──────────────────────────
 
-    /** 孩子历次成绩：按考试倒序分组，每科分数+满分+等级（现算）；白名单输出，无任何名次字段；note=等级换算口径（随配置实时生效） */
+    /** 孩子历次成绩：按考试倒序分组，每科分数+满分+等级（批63c 等级=校方上传）；白名单输出，无任何名次字段 */
     @GetMapping("/children/{studentId}/scores")
     public ApiResponse<Map<String, Object>> scores(@PathVariable Long studentId) {
         checkParent();
         requireBound(studentId);
-        return ApiResponse.ok(Map.of(
-                "note", scoreLevelService.note(),
-                "exams", parentScoreService.scoresOf(studentId)));
+        return ApiResponse.ok(Map.of("exams", parentScoreService.scoresOf(studentId)));
     }
 }

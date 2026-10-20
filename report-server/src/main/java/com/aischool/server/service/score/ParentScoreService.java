@@ -23,7 +23,7 @@ import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
- * 批63 家长成绩：白名单式输出——分数+满分+等级（ScoreLevelService 现算），
+ * 批63 家长成绩：白名单式输出——分数+满分+等级（批63c 等级=校方上传 grade，不再现算），
  * 刻意不含任何名次字段（甲方口径：家长只见分数+等级）。
  */
 @Service
@@ -35,12 +35,11 @@ public class ParentScoreService {
     private final ExamSubjectMapper examSubjectMapper;
     private final SubjectMapper subjectMapper;
     private final TermMapper termMapper;
-    private final ScoreLevelService levelService;
 
-    /** 历次成绩按考试分组（新→旧）：[{examName,termName,examDate,subjects:[{subjectName,score,fullScore,level}]}] */
+    /** 历次成绩按考试分组（新→旧）：[{examName,termName,examDate,totalGrade,subjects:[{subjectName,score,fullScore,grade}]}] */
     public List<Map<String, Object>> scoresOf(Long studentId) {
         Map<Long, List<Score>> byExam = scoreMapper.selectList(new LambdaQueryWrapper<Score>()
-                        .eq(Score::getStudentId, studentId).isNotNull(Score::getScore))
+                        .eq(Score::getStudentId, studentId)) // 批63c 不过滤 score NULL——总分等级行也要带回
                 .stream().collect(Collectors.groupingBy(Score::getExamId));
         if (byExam.isEmpty()) {
             return List.of();
@@ -60,7 +59,14 @@ public class ParentScoreService {
             List<ExamSubject> examSubjects = examSubjectMapper.selectList(new LambdaQueryWrapper<ExamSubject>()
                     .eq(ExamSubject::getExamId, exam.getId()).orderByAsc(ExamSubject::getSubjectId));
             Map<Long, java.math.BigDecimal> scoreOf = byExam.get(exam.getId()).stream()
+                    .filter(sc -> sc.getSubjectId() != null && sc.getScore() != null) // 批63c 排除总分等级行/清分留级行
                     .collect(Collectors.toMap(Score::getSubjectId, Score::getScore, (a, b) -> a));
+            Map<Long, String> gradeOf = byExam.get(exam.getId()).stream()
+                    .filter(sc -> sc.getSubjectId() != null && sc.getGrade() != null)
+                    .collect(Collectors.toMap(Score::getSubjectId, Score::getGrade, (a, b) -> a));
+            String totalGrade = byExam.get(exam.getId()).stream()
+                    .filter(sc -> sc.getSubjectId() == null).map(Score::getGrade)
+                    .filter(Objects::nonNull).findFirst().orElse(null);
             List<Map<String, Object>> subjects = new ArrayList<>();
             for (ExamSubject es : examSubjects) {
                 java.math.BigDecimal sc = scoreOf.get(es.getSubjectId());
@@ -71,7 +77,7 @@ public class ParentScoreService {
                 sm.put("subjectName", subjectNames.getOrDefault(es.getSubjectId(), String.valueOf(es.getSubjectId())));
                 sm.put("score", sc);
                 sm.put("fullScore", es.getFullScore());
-                sm.put("level", levelService.levelOf(sc, es.getFullScore()));
+                sm.put("grade", gradeOf.get(es.getSubjectId())); // 批63c 校方上传等级，未上传为 null
                 subjects.add(sm);
             }
             if (subjects.isEmpty()) {
@@ -82,6 +88,7 @@ public class ParentScoreService {
             m.put("examName", exam.getName());
             m.put("termName", termNames.get(exam.getTermId()));
             m.put("examDate", exam.getExamDate() == null ? null : exam.getExamDate().toString());
+            m.put("totalGrade", totalGrade); // 批63c 总分等级（subject_id NULL 行），未上传为 null
             m.put("subjects", subjects);
             result.add(m);
         }

@@ -64,8 +64,8 @@ public class RuleFactsService {
             double total = 0;
             for (Score sc : scores) {
                 Subject s = subjects.get(sc.getSubjectId());
-                if (s == null) {
-                    continue;
+                if (s == null || sc.getScore() == null) {
+                    continue; // 批63c 跳过总分等级行（subject_id NULL）/清分留级行
                 }
                 total += sc.getScore().doubleValue();
                 Map<String, Object> row = new LinkedHashMap<>();

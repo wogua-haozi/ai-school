@@ -17,6 +17,7 @@ public class Score {
     private Long subjectId;
     private Long studentId;
     private BigDecimal score;
+    private String grade; // 批63c 校方上传等级（A~D 可带 +/-）；subject_id NULL 行=总分等级
     private Integer classRank;
     private Integer gradeRank;
     private Long createdBy;

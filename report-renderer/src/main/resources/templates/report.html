@@ -365,7 +365,7 @@
   </div>
 </div>
 
-<!-- ═══════════ p19+ 期末成绩（批63 家长版专页：分数+满分+等级，无排名；教师版 th:if 短路零渲染） ═══════════ -->
+<!-- ═══════════ p19+ 期末成绩（批63 家长版专页：分数+满分+等级（批63c 等级=校方上传），无排名；教师版 th:if 短路零渲染） ═══════════ -->
 <div class="page z-o" data-toc="期末成绩" th:if="${parentEdition and r.examScores != null and !#lists.isEmpty(r.examScores.subjects)}">
   <div class="t16" style="top:97pt">期末成绩</div>
   <div class="abs" style="top:152pt;left:60.7pt;width:473.6pt">
@@ -384,11 +384,14 @@
             style="border:1pt solid #E3D5AE;color:#1F2A44;font-size:9pt;padding:10pt 2pt;text-align:center">95</td>
         <td th:text="${s.fullScore}"
             style="border:1pt solid #E3D5AE;color:#6A747E;font-size:9pt;padding:10pt 2pt;text-align:center">100</td>
-        <td th:text="${s.level}"
+        <td th:text="${s.grade == null} ? '—' : ${s.grade}"
             style="border:1pt solid #E3D5AE;color:#A8232B;font-size:9pt;padding:10pt 2pt;text-align:center">A</td>
       </tr>
     </table>
-    <div style="margin-top:8pt;font-size:8.5pt;color:#8A93A6">等级说明：A≥满分的85%，B≥70%，C≥60%，D低于60%（以学校公布口径为准）。</div>
+    <div style="margin-top:8pt;font-size:9.5pt;color:#A8232B;font-weight:bold"
+         th:if="${!#strings.isEmpty(r.examScores.totalGrade)}"
+         th:text="'总分等级：' + ${r.examScores.totalGrade}">总分等级：A</div>
+    <div style="margin-top:8pt;font-size:8.5pt;color:#8A93A6">等级说明：等级由学校评定并提供（批63c 上传制）。</div>
   </div>
 </div>
 

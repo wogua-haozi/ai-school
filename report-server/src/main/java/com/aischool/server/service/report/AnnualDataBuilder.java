@@ -216,8 +216,8 @@ public class AnnualDataBuilder {
                     .last("LIMIT 1"));
             List<Score> scores = exam != null ? scoreMapper.selectList(new LambdaQueryWrapper<Score>()
                     .eq(Score::getExamId, exam.getId()).eq(Score::getStudentId, student.getId())) : List.of();
-            BigDecimal total = scores.stream().map(Score::getScore)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal total = scores.stream().filter(sc -> sc.getScore() != null) // 批63c 跳过总分等级行/清分留级行
+                    .map(Score::getScore).reduce(BigDecimal.ZERO, BigDecimal::add);
             Map<String, Object> point = new LinkedHashMap<>();
             point.put("term", t.getName());
             point.put("hasExam", !scores.isEmpty());
@@ -234,7 +234,7 @@ public class AnnualDataBuilder {
                         .eq(Score::getExamId, latestExam.getId())
                         .eq(Score::getStudentId, student.getId())) : List.of();
         List<Map<String, Object>> subjectsOut = latestScores.stream()
-                .filter(sc -> subjects.containsKey(sc.getSubjectId()))
+                .filter(sc -> sc.getScore() != null && subjects.containsKey(sc.getSubjectId())) // 批63c 同上
                 .sorted(Comparator.comparing((Score sc) -> subjects.get(sc.getSubjectId()).getSort()))
                 .map(sc -> {
                     Map<String, Object> m = new LinkedHashMap<>();
