@@ -108,7 +108,7 @@ const avatarChar = computed(() => auth.realName?.charAt(0) || '师')
    「班主任寄语/成长总结/综合素质」三入口共用 /final-eval（?tab= 预选段）；
    「教师档案/教师风采/教师足迹」三入口共用 /my-growth（?tab= 预选）；
    批32 口径：请假入口=班主任/生活老师/级长/学成中心主任/领导/管理员；
-   批49 成绩口径：教师/班主任零入口（级长可录本年级、领导/教学处只读，后端硬校验兜底） */
+   批63 成绩口径：班主任/科任开只读入口（无排名列无汇总，服务端置 null 兜底）；级长可录本年级、领导/教学处只读 */
 const sections = computed(() => {
   const leave = ['HEAD_TEACHER', 'GRADE_LEADER', 'DIRECTOR', 'DORM', 'LEADER', 'ADMIN', 'SECRETARY'].includes(auth.role)
   const score = auth.scoreAccess

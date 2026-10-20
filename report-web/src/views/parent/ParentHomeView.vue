@@ -94,6 +94,7 @@ const avatarChar = computed(() => auth.realName?.charAt(0) || '家')
 const grids = computed(() => [
   { name: '微光时刻', icon: 'photograph', to: '/p/moments', bg: '#F97316' },
   { name: '成长档案', icon: 'orders-o', to: children.value.length ? `/p/archive/${children.value[0].studentId}` : '', bg: '#1F2A44' },
+  { name: '成绩查询', icon: 'bar-chart-o', to: '/p/scores', bg: '#3E7BFA' },
   { name: '荣誉证书', icon: 'medal-o', to: '/p/honor', bg: '#EAB308' },
   { name: '成长报告', icon: 'description', to: '/p/report', bg: '#14B8A6' },
   { name: '请假记录', icon: 'clock-o', to: '/p/leave', bg: '#DC2626' },

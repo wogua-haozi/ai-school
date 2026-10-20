@@ -296,6 +296,7 @@ function roleCn(role: string) {
     ADMIN: '管理员', LEADER: '领导', SECRETARY: '书记', GRADE_LEADER: '级长',
     HEAD_TEACHER: '班主任', TEACHER: '教师', DIRECTOR: '学成中心主任',
     DORM: '生活老师', GUARD: '门卫', PROCUREMENT: '招采', PARENT: '家长',
+    LOGISTICS: '后勤中心', REPAIRER: '水电维修工',
   }
   return m[role] || role || '—'
 }

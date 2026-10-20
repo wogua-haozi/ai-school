@@ -50,8 +50,7 @@ public class ScoreController {
         private Long examId;
         @NotNull(message = "subjectId 不能为空")
         private Long subjectId;
-        @NotNull(message = "classId 不能为空")
-        private Long classId;
+        private Long classId; // 批63 可空=年级模式（按 studentId 逐行校验跨班保存）
         private List<ScoreService.RowReq> rows;
     }
 
@@ -61,6 +60,20 @@ public class ScoreController {
         Long id = scoreService.createExam(AuthUtil.current(), req.getTermId(), req.getName(),
                 req.getExamDate(), req.getSubjects());
         return ApiResponse.ok(Map.of("examId", id));
+    }
+
+    /** 批63 修改考试：科目增删+各科满分（删科连带清该科成绩，前端二次确认） */
+    @PutMapping("/exam/{id}")
+    public ApiResponse<Void> updateExam(@PathVariable Long id,
+                                        @Validated @RequestBody ExamUpdateReq req) {
+        scoreService.updateExam(AuthUtil.current(), id, req.getSubjects());
+        return ApiResponse.ok(null);
+    }
+
+    @Data
+    public static class ExamUpdateReq {
+        @NotEmpty(message = "subjects 不能为空")
+        private List<ScoreService.SubjectReq> subjects;
     }
 
     /** 考试列表（批49 限成绩可见角色，教师零入口；附 entryOpen 窗口状态） */
@@ -98,27 +111,30 @@ public class ScoreController {
         private Boolean open;
     }
 
-    /** 某班在某考试下的可操作科目（任课教师只见所教科目） */
+    /** 某班/某年级在某考试下的科目上下文（批63 classId/gradeId 二选一；班主任/科任只读） */
     @GetMapping("/subject-context")
     public ApiResponse<List<Map<String, Object>>> subjectContext(@RequestParam Long examId,
-                                                                 @RequestParam Long classId) {
-        return ApiResponse.ok(scoreService.subjectContext(AuthUtil.current(), examId, classId));
+                                                                 @RequestParam(required = false) Long classId,
+                                                                 @RequestParam(required = false) Long gradeId) {
+        return ApiResponse.ok(scoreService.subjectContext(AuthUtil.current(), examId, classId, gradeId));
     }
 
-    /** 某班某科成绩单（名册 + 分数/排名） */
+    /** 成绩单（classId 单班 / gradeId 年级；subjectId 空=总分；班主任/科任只读无排名） */
     @GetMapping("/list")
     public ApiResponse<Map<String, Object>> list(@RequestParam Long examId,
-                                                 @RequestParam Long subjectId,
-                                                 @RequestParam Long classId) {
-        return ApiResponse.ok(scoreService.listScores(AuthUtil.current(), examId, subjectId, classId));
+                                                 @RequestParam(required = false) Long subjectId,
+                                                 @RequestParam(required = false) Long classId,
+                                                 @RequestParam(required = false) Long gradeId) {
+        return ApiResponse.ok(scoreService.listScores(AuthUtil.current(), examId, subjectId, classId, gradeId));
     }
 
-    /** 成绩导出（权限同查看）：当前成绩单 → xlsx */
+    /** 成绩导出（含名次列，限管理面角色）：当前成绩单 → xlsx */
     @GetMapping("/export")
     public ResponseEntity<byte[]> export(@RequestParam Long examId,
-                                         @RequestParam Long subjectId,
-                                         @RequestParam Long classId) {
-        Exported f = scoreService.exportScores(AuthUtil.current(), examId, subjectId, classId);
+                                         @RequestParam(required = false) Long subjectId,
+                                         @RequestParam(required = false) Long classId,
+                                         @RequestParam(required = false) Long gradeId) {
+        Exported f = scoreService.exportScores(AuthUtil.current(), examId, subjectId, classId, gradeId);
         String filename = URLEncoder.encode(f.filename(), StandardCharsets.UTF_8);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + filename)
@@ -128,26 +144,25 @@ public class ScoreController {
                 .body(f.content());
     }
 
-    /** 批量录入（score=null 清除） */
+    /** 批量录入（score=null 清除；classId 空=年级模式跨班保存，批63） */
     @PutMapping("/entry")
     public ApiResponse<Map<String, Object>> entry(@Validated @RequestBody EntryReq req) {
         return ApiResponse.ok(scoreService.entry(AuthUtil.current(), req.getExamId(), req.getSubjectId(),
                 req.getClassId(), req.getRows()));
     }
 
-    /** Excel 导入（multipart：file + examId/subjectId/classId） */
+    /** Excel 导入（单班多科：file + examId/classId，科目列按模板表头匹配，批63） */
     @PostMapping("/import")
     public ApiResponse<Map<String, Object>> importExcel(@RequestParam Long examId,
-                                                        @RequestParam Long subjectId,
                                                         @RequestParam Long classId,
                                                         @RequestParam("file") MultipartFile file) {
-        return ApiResponse.ok(scoreService.importExcel(AuthUtil.current(), examId, subjectId, classId, file));
+        return ApiResponse.ok(scoreService.importExcel(AuthUtil.current(), examId, classId, file));
     }
 
-    /** 下载导入模板（该班名册预填，.xlsx） */
+    /** 下载导入模板（该班名册预填，列=考试设定科目，批63） */
     @GetMapping("/template")
-    public ResponseEntity<byte[]> template(@RequestParam Long classId) {
-        byte[] bytes = scoreService.template(AuthUtil.current(), classId);
+    public ResponseEntity<byte[]> template(@RequestParam Long examId, @RequestParam Long classId) {
+        byte[] bytes = scoreService.template(AuthUtil.current(), examId, classId);
         String filename = URLEncoder.encode("成绩导入模板.xlsx", StandardCharsets.UTF_8);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + filename)

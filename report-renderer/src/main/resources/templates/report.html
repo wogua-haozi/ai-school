@@ -138,6 +138,8 @@
     <div class="toc-row" data-k="校长寄语"><span>校长寄语</span><span class="dots"></span><span class="tp"></span></div>
     <div class="toc-row" data-k="国家课程学业评价"><span>国家课程学业评价</span><span class="dots"></span><span class="tp"></span></div>
     <div class="toc-row" data-k="我的平时成绩"><span>我的平时成绩</span><span class="dots"></span><span class="tp"></span></div>
+    <!-- 批63 家长版期末成绩页（分数+等级无排名）；教师版 th:if 短路，目录与渲染零变化 -->
+    <div class="toc-row" data-k="期末成绩" th:if="${parentEdition and r.examScores != null and !#lists.isEmpty(r.examScores.subjects)}"><span>期末成绩</span><span class="dots"></span><span class="tp"></span></div>
     <div class="toc-row" data-k="学生个人综合素质成长"><span>学生个人综合素质成长</span><span class="dots"></span><span class="tp"></span></div>
     <div class="toc-row" data-k="我的活动"><span>我的活动</span><span class="dots"></span><span class="tp"></span></div>
     <div class="toc-row" data-k="成长银行"><span>成长银行</span><span class="dots"></span><span class="tp"></span></div>
@@ -265,7 +267,7 @@
   </div>
 </div>
 
-<!-- ═══════════ p06 隔页·国家课程学业评价（橙区奶油底；家长版整板块不渲染） ═══════════ -->
+<!-- ═══════════ p06 隔页·国家课程学业评价（橙区奶油底；家长版同渲染，仅图表去班级/年级最高分） ═══════════ -->
 <div class="page z-o nohdr" data-toc="国家课程学业评价" style="background:linear-gradient(180deg,#F7EFE2 0%,#EFE2C9 100%)">
   <img class="abs" th:src="${imgCornerTl}" style="top:0;left:0;width:417pt;height:336pt" alt=""/>
   <img class="abs" th:src="${imgCornerBr}" style="top:426pt;left:178pt;width:417pt;height:416pt" alt=""/>
@@ -278,7 +280,7 @@
   </div>
 </div>
 
-<!-- ═══════════ p07 学业综合（c7a 雷达 / c7b 三柱 / c7c 横向对比 / c7d 周折线；家长版不渲染） ═══════════ -->
+<!-- ═══════════ p07 学业综合（c7a 雷达 / c7b 三柱 / c7c 横向对比 / c7d 周折线；家长版渲染，图表去班级/年级最高分） ═══════════ -->
 <div class="page z-o">
   <img class="abs" th:src="${imgCornerTr}" style="top:0;left:0;width:79pt;height:64pt" alt=""/>
   <img class="abs" th:src="${imgDeco}" style="top:600pt;left:499pt;width:54pt;height:38pt" alt=""/>
@@ -301,7 +303,7 @@
   <div class="abs" style="top:693.9pt;left:60.7pt;width:474pt;height:36pt;background:#EFEDE7"></div>
   <div class="abs" style="top:706pt;left:73pt;font-size:9pt;color:#1A1A1A" th:text="${r.academic.toImprove}">道德与法治</div>
 </div>
-<!-- ═══════════ p08–18 学科页 ×11（家长版不渲染） ═══════════ -->
+<!-- ═══════════ p08–18 学科页 ×11（家长版渲染，图表去班级/年级最高分） ═══════════ -->
 <div class="page z-o" th:each="sp, sStat : ${r.subjectPages}">
   <img class="abs" th:src="${imgCornerTr}" style="top:-2pt;left:531pt;width:64pt;height:80pt" alt=""/>
   <img class="abs" th:src="${imgDeco}" style="top:692pt;left:499pt;width:54pt;height:37pt" alt=""/>
@@ -328,7 +330,7 @@
   </div>
 </div>
 
-<!-- ═══════════ p19 我的平时成绩（家长版不渲染） ═══════════ -->
+<!-- ═══════════ p19 我的平时成绩（家长版渲染） ═══════════ -->
 <div class="page z-o" data-toc="我的平时成绩">
   <div class="t16" style="top:97pt">我的平时成绩</div>
   <div class="abs" style="top:152pt;left:60.7pt;width:473.6pt">
@@ -360,6 +362,33 @@
             style="border:1pt solid #E3D5AE;color:#6A747E;font-size:9pt;padding:16pt 2pt 6.5pt;text-align:center">77(42次)</td>
       </tr>
     </table>
+  </div>
+</div>
+
+<!-- ═══════════ p19+ 期末成绩（批63 家长版专页：分数+满分+等级，无排名；教师版 th:if 短路零渲染） ═══════════ -->
+<div class="page z-o" data-toc="期末成绩" th:if="${parentEdition and r.examScores != null and !#lists.isEmpty(r.examScores.subjects)}">
+  <div class="t16" style="top:97pt">期末成绩</div>
+  <div class="abs" style="top:152pt;left:60.7pt;width:473.6pt">
+    <div style="font-size:12pt;font-weight:bold;color:#A8232B" th:text="'学科期末成绩（' + ${r.examScores.examName} + '）'">学科期末成绩（期末考试）</div>
+    <table style="table-layout:fixed;width:100%;background:#FBF8F1;border-collapse:collapse;margin-top:2pt">
+      <tr>
+        <th style="border:1pt solid #E3D5AE;color:#A8232B;font-size:9pt;padding:1pt 2pt;text-align:center">学科</th>
+        <th style="border:1pt solid #E3D5AE;color:#A8232B;font-size:9pt;padding:1pt 2pt;text-align:center">成绩</th>
+        <th style="border:1pt solid #E3D5AE;color:#A8232B;font-size:9pt;padding:1pt 2pt;text-align:center">满分</th>
+        <th style="border:1pt solid #E3D5AE;color:#A8232B;font-size:9pt;padding:1pt 2pt;text-align:center">等级</th>
+      </tr>
+      <tr th:each="s : ${r.examScores.subjects}">
+        <td th:text="${s.name}"
+            style="border:1pt solid #E3D5AE;color:#6A747E;font-size:9pt;padding:10pt 2pt;text-align:center">语文</td>
+        <td th:text="${s.score}"
+            style="border:1pt solid #E3D5AE;color:#1F2A44;font-size:9pt;padding:10pt 2pt;text-align:center">95</td>
+        <td th:text="${s.fullScore}"
+            style="border:1pt solid #E3D5AE;color:#6A747E;font-size:9pt;padding:10pt 2pt;text-align:center">100</td>
+        <td th:text="${s.level}"
+            style="border:1pt solid #E3D5AE;color:#A8232B;font-size:9pt;padding:10pt 2pt;text-align:center">A</td>
+      </tr>
+    </table>
+    <div style="margin-top:8pt;font-size:8.5pt;color:#8A93A6">等级说明：A≥满分的85%，B≥70%，C≥60%，D低于60%（以学校公布口径为准）。</div>
   </div>
 </div>
 

@@ -56,6 +56,7 @@ public class DataScopeService {
                 yield scope == null ? null : stageClassIds(scope);
             }
             case "GRADE_LEADER", "HEAD_TEACHER", "TEACHER", "PROCUREMENT" -> multiDutyClassIds(user);
+            case "LOGISTICS", "REPAIRER" -> List.of(); // 批63 报修流转角色：无班级数据面（工作台走 /api/repair/workbench）
             default -> throw new BizException(403, "未知角色: " + user.role());
         };
     }

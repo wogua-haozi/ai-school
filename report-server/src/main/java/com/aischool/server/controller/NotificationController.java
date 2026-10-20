@@ -99,6 +99,8 @@ public class NotificationController {
             case "OA_RESULT" -> "审批结果";
             case "LEAVE_TODO" -> "请假待批";
             case "LEAVE_RESULT" -> "请假结果";
+            case "REPAIR_TODO" -> "报修待办";
+            case "REPAIR_RESULT" -> "报修结果";
             case "REGISTER_TODO" -> "账号待审";
             case "ALERT" -> "系统告警";
             default -> "系统消息";

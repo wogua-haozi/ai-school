@@ -11,38 +11,57 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
-/** 成绩 Excel：单科一表（学号/姓名/成绩），POI 直读直写 */
+/** 成绩 Excel：单班多科一表（学号/姓名/各科目列，批63 按考试设定科目生成），POI 直读直写 */
 @Service
 public class ExcelScoreHelper {
 
-    public record ScoreRow(String studentNo, String name, BigDecimal score) {}
+    /** 一行导入：scores 按科目名带分（该科留空不入 map=不动该科） */
+    public record ScoreRow(String studentNo, String name, Map<String, BigDecimal> scores) {}
 
-    /** 读首个工作表：跳过表头；学号与成绩均空的行跳过；成绩兼容数值/文本单元格 */
-    public List<ScoreRow> read(InputStream in) {
+    /** 读首个工作表：学号/姓名按列位，科目列按表头名匹配（批63）；学号与各科成绩均空的行跳过；
+     *  表头不认识的列忽略（等级等多余列）；成绩兼容数值/文本单元格 */
+    public List<ScoreRow> read(InputStream in, List<String> subjects) {
         List<ScoreRow> rows = new ArrayList<>();
         try (XSSFWorkbook wb = new XSSFWorkbook(in)) {
             DataFormatter fmt = new DataFormatter();
-            for (Row row : wb.getSheetAt(0)) {
+            var sheet = wb.getSheetAt(0);
+            Row head = sheet.getRow(0);
+            Map<Integer, String> subjectCols = new LinkedHashMap<>(); // 列位 → 科目名
+            if (head != null) {
+                for (int c = 2; c <= head.getLastCellNum(); c++) {
+                    String h = cell(fmt, head, c);
+                    if (subjects.contains(h)) {
+                        subjectCols.put(c, h);
+                    }
+                }
+            }
+            for (Row row : sheet) {
                 if (row.getRowNum() == 0) {
                     continue; // 表头
                 }
                 String no = cell(fmt, row, 0);
                 String name = cell(fmt, row, 1);
-                String score = cell(fmt, row, 2);
-                if (no.isBlank() && score.isBlank()) {
-                    continue;
-                }
-                BigDecimal s = null;
-                if (!score.isBlank()) {
+                Map<String, BigDecimal> scores = new LinkedHashMap<>();
+                for (var en : subjectCols.entrySet()) {
+                    String v = cell(fmt, row, en.getKey());
+                    if (v.isBlank()) {
+                        continue; // 留空 = 不动该科
+                    }
                     try {
-                        s = new BigDecimal(score.trim());
+                        scores.put(en.getValue(), new BigDecimal(v.trim()));
                     } catch (NumberFormatException e) {
-                        throw new BizException(400, "第" + (row.getRowNum() + 1) + "行成绩不是数字: " + score);
+                        throw new BizException(400, "第" + (row.getRowNum() + 1) + "行["
+                                + en.getValue() + "]成绩不是数字: " + v);
                     }
                 }
-                rows.add(new ScoreRow(no.trim(), name.trim(), s));
+                if (no.isBlank() && scores.isEmpty()) {
+                    continue;
+                }
+                rows.add(new ScoreRow(no.trim(), name.trim(), scores));
             }
         } catch (BizException e) {
             throw e;
@@ -87,21 +106,23 @@ public class ExcelScoreHelper {
         }
     }
 
-    /** 生成导入模板：表头 + 班级名册（学号/姓名预填，成绩留空） */
-    public byte[] template(List<Student> roster) {
+    /** 生成导入模板：表头=学号/姓名/考试各科目（批63 按设定科目），名册预填，成绩留空 */
+    public byte[] template(List<Student> roster, List<String> subjects) {
         try (XSSFWorkbook wb = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             var sheet = wb.createSheet("成绩导入");
             var head = sheet.createRow(0);
             head.createCell(0).setCellValue("学号");
             head.createCell(1).setCellValue("姓名");
-            head.createCell(2).setCellValue("成绩");
+            for (int c = 0; c < subjects.size(); c++) {
+                head.createCell(c + 2).setCellValue(subjects.get(c));
+            }
             int i = 1;
             for (Student st : roster) {
                 var row = sheet.createRow(i++);
                 row.createCell(0).setCellValue(st.getStudentNo());
                 row.createCell(1).setCellValue(st.getName());
             }
-            for (int col = 0; col < 3; col++) {
+            for (int col = 0; col < 2 + subjects.size(); col++) {
                 sheet.setColumnWidth(col, 16 * 256);
             }
             wb.write(out);

@@ -88,6 +88,8 @@ const router = createRouter({
     // 成长档案（批14 生命周期）：在校全期事件流+总览
     { path: '/p/archive/:id', component: () => import('../views/parent/ParentArchiveView.vue'), meta: { layout: 'psub', title: '成长档案' } },
     { path: '/p/honor', component: () => import('../views/parent/ParentHonorView.vue'), meta: { layout: 'psub', title: '荣誉证书' } },
+    // 成绩查询（批63）：分数+等级（无排名），等级按满分比例现算
+    { path: '/p/scores', component: () => import('../views/parent/ParentScoreView.vue'), meta: { layout: 'psub', title: '成绩查询' } },
     // 成长报告（批5 家长版）：同任务双渲染的去成绩版 PDF，仅 parent_file_url 可达
     { path: '/p/report', component: () => import('../views/parent/ParentReportView.vue'), meta: { layout: 'psub', title: '成长报告' } },
     // 意见反馈（批8.5）：家长入口
@@ -131,9 +133,9 @@ router.beforeEach((to) => {
   if (role !== 'PARENT' && !free && to.path.startsWith('/p/')) return '/'
   if (role === 'GUARD' && !free && !to.path.startsWith('/g/')) return '/g/home'
   if (role !== 'GUARD' && !free && to.path.startsWith('/g/')) return '/'
-  // 批49：/l/scores（全校成绩汇总）放开给成绩可见角色（管理员/书记/级长/SCORE_ALL 权限点）；其余 /l/* 仅领导
+  // 批49 开放汇总入口；批63 收口为排名可见角色（管理员/书记/级长/SCORE_ALL——班主任/科任只见分数无汇总）
   if (role !== 'LEADER' && to.path.startsWith('/l/')
-    && !(to.path === '/l/scores' && auth.scoreAccess)) return '/'
+    && !(to.path === '/l/scores' && auth.canSeeRank)) return '/'
 })
 
 export default router

@@ -24,7 +24,7 @@
             :rules="[
               { required: true, message: '请再次输入密码' },
               { validator: (v: string) => v === form.password, message: '两次密码不一致' }]" />
-          <van-field v-model="form.studentNo" left-icon="user-o" placeholder="孩子学号（如 1250101）"
+          <van-field v-model="form.studentNo" left-icon="user-o" placeholder="孩子学号（如 2773630101）"
             :rules="[{ required: true, message: '请输入孩子学号' }]" />
           <van-field v-model="form.studentName" left-icon="friends-o" placeholder="孩子姓名"
             :rules="[{ required: true, message: '请输入孩子姓名' }]" />

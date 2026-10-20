@@ -43,8 +43,13 @@ import java.util.stream.Collectors;
 /**
  * 成绩管理：考试（含科目满分）→ 按任课关系录入 → 全体竞争排名（同分同名次）→ 回填单科/总分最高分。
  * 排名纯 Java 内存计算，零自定义 SQL；报告契约不读排名列，重算零契约风险。
- * 批49 甲方口径：教师/班主任全端点关闭；可传可改=ADMIN/书记（全校）+级长（绑定年级，受 entry_open 约束）；
- * 查看=ADMIN/书记（全校）+级长（绑定年级）+校级领导（分管学段，只读）+SCORE_ALL 权限点（全校，只读）。
+ * 批49 甲方口径（批63 放宽查看面）：可传可改=ADMIN/书记（全校）+级长（绑定年级，受 entry_open 约束）；
+ * 查看=ADMIN/书记（全校）+级长（绑定年级）+校级领导（分管学段，只读）+SCORE_ALL 权限点（全校，只读）
+ * +班主任/科任（挂名班/任课班，只读，批63）。
+ * 批63 排名只对管理面可见（canSeeRank）：班主任/科任只读入口名次一律服务端置 null，
+ * 家长线走 /api/parent/* 白名单天然无 rank；汇总/导出含名次，非管理面 403。
+ * 批63 增：考试科目/满分可改（updateExam）；listScores subjectId 空=总分模式（内存现算排名）；
+ * 模板/导入按考试设定科目多列（ExcelScoreHelper 单班多科一表）。
  * t_exam.entry_open 仅约束级长录入；查看不受窗口影响。
  */
 @Service
@@ -65,6 +70,61 @@ public class ScoreService {
     private final ExcelScoreHelper excel;
 
     // ───────────────── 考试 ─────────────────
+
+    /** 批63 修改考试科目与各科满分：可增删科目、改满分；降满分不得低于该科已录最高分；
+     *  删科连带删除该科已录成绩并重算排名（前端须二次确认）。名称/日期/学期不动 */
+    @Transactional
+    public void updateExam(UserPrincipal user, Long examId, List<SubjectReq> subjects) {
+        requireScoreUpload(user);
+        Exam exam = requireExam(examId);
+        if (subjects == null || subjects.isEmpty()) {
+            throw new BizException(400, "至少设置一个考试科目");
+        }
+        Map<Long, ExamSubject> existing = examSubjectMapper.selectList(new LambdaQueryWrapper<ExamSubject>()
+                        .eq(ExamSubject::getExamId, examId)).stream()
+                .collect(Collectors.toMap(ExamSubject::getSubjectId, Function.identity(), (a, b) -> a));
+        java.util.Set<Long> keep = new java.util.LinkedHashSet<>();
+        for (SubjectReq s : subjects) {
+            if (s.getSubjectId() == null || subjectMapper.selectById(s.getSubjectId()) == null) {
+                throw new BizException(404, "学科不存在: " + s.getSubjectId());
+            }
+            if (s.getFullScore() == null || s.getFullScore().compareTo(BigDecimal.ZERO) <= 0) {
+                throw new BizException(400, "满分必须大于 0");
+            }
+            if (!keep.add(s.getSubjectId())) {
+                throw new BizException(400, "考试科目重复: " + s.getSubjectId());
+            }
+            ExamSubject es = existing.get(s.getSubjectId());
+            if (es == null) {
+                ExamSubject n = new ExamSubject();
+                n.setExamId(exam.getId());
+                n.setSubjectId(s.getSubjectId());
+                n.setFullScore(s.getFullScore());
+                examSubjectMapper.insert(n);
+            } else if (!eq(es.getFullScore(), s.getFullScore())) {
+                BigDecimal max = scoreMapper.selectList(new LambdaQueryWrapper<Score>()
+                                .eq(Score::getExamId, examId).eq(Score::getSubjectId, s.getSubjectId()))
+                        .stream().map(Score::getScore).max(Comparator.naturalOrder()).orElse(null);
+                if (max != null && s.getFullScore().compareTo(max) < 0) {
+                    throw new BizException(400, "科目已录最高分 " + max + "，满分不能低于已录成绩");
+                }
+                es.setFullScore(s.getFullScore());
+                examSubjectMapper.updateById(es);
+            }
+        }
+        boolean removed = false;
+        for (ExamSubject es : existing.values()) {
+            if (!keep.contains(es.getSubjectId())) {
+                scoreMapper.delete(new LambdaQueryWrapper<Score>()
+                        .eq(Score::getExamId, examId).eq(Score::getSubjectId, es.getSubjectId()));
+                examSubjectMapper.deleteById(es.getId());
+                removed = true;
+            }
+        }
+        if (removed) {
+            recompute(examId);
+        }
+    }
 
     /** 建考试（批49 随上传权限收紧：ADMIN/书记/级长）：一次带齐科目与满分 */
     public Long createExam(UserPrincipal user, Long termId, String name, LocalDate examDate,
@@ -117,7 +177,7 @@ public class ScoreService {
         examMapper.deleteById(examId);
     }
 
-    /** 考试列表（附学期名与科目数；批49 限成绩可见角色，教师端零入口） */
+    /** 考试列表（附学期名与科目数；批49 限成绩可见角色；批63 班主任/科任只读入口同样可见考试） */
     public List<Map<String, Object>> examList(UserPrincipal user) {
         requireScoreAccess(user);
         List<Exam> exams = examMapper.selectList(new LambdaQueryWrapper<Exam>()
@@ -143,12 +203,12 @@ public class ScoreService {
 
     // ───────────────── 录入上下文 ─────────────────
 
-    /** 某班在某考试下的科目上下文（批49：查看者见全科目；editable=可传可改者） */
-    public List<Map<String, Object>> subjectContext(UserPrincipal user, Long examId, Long classId) {
+    /** 某班/某年级在某考试下的科目上下文（批63 classId/gradeId 二选一；查看者见全科目，editable=可传可改者） */
+    public List<Map<String, Object>> subjectContext(UserPrincipal user, Long examId, Long classId, Long gradeId) {
         requireScoreAccess(user);
-        checkClassVisible(user, classId);
+        targetClassIds(user, classId, gradeId); // 班级存在性/数据域校验
         requireExam(examId);
-        boolean editable = canUpload(user, examId, classId);
+        boolean editable = classId != null ? canUpload(user, examId, classId) : canUploadRole(user, examId);
         Map<Long, String> subjectNames = subjectMapper.selectList(null).stream()
                 .collect(Collectors.toMap(Subject::getId, Subject::getName));
         return examSubjectMapper.selectList(new LambdaQueryWrapper<ExamSubject>()
@@ -165,66 +225,160 @@ public class ScoreService {
                 }).toList();
     }
 
-    /** 某班某科成绩单（名册 + 分数/排名；缺分为 null）。批49：查看者均为管理/领导面，排名可见 */
-    public Map<String, Object> listScores(UserPrincipal user, Long examId, Long subjectId, Long classId) {
+    /** 成绩单（名册 + 分数；缺分为 null）。批63：classId 单班 / gradeId 年级跨班合并（带 classId/className）；
+     *  subjectId 空=总分模式（各科得分之和，不可录入，排名内存现算同分同名次）。
+     *  排名仅管理面可见（canSeeRank）：班主任/科任只读入口 classRank/gradeRank 服务端一律置 null */
+    public Map<String, Object> listScores(UserPrincipal user, Long examId, Long subjectId, Long classId, Long gradeId) {
         requireScoreAccess(user);
-        checkClassVisible(user, classId);
-        ExamSubject es = requireExamSubject(examId, subjectId);
-        List<Student> roster = roster(classId);
-        Map<Long, Score> scores = scoreMapper.selectList(new LambdaQueryWrapper<Score>()
-                        .eq(Score::getExamId, examId).eq(Score::getSubjectId, subjectId))
-                .stream().collect(Collectors.toMap(Score::getStudentId, Function.identity(), (a, b) -> a));
-        List<Map<String, Object>> rows = roster.stream().map(st -> {
-            Score sc = scores.get(st.getId());
+        List<Long> classIds = targetClassIds(user, classId, gradeId);
+        boolean totalMode = subjectId == null;
+        List<ExamSubject> examSubjects = examSubjectMapper.selectList(new LambdaQueryWrapper<ExamSubject>()
+                .eq(ExamSubject::getExamId, examId).orderByAsc(ExamSubject::getSubjectId));
+        if (examSubjects.isEmpty()) {
+            throw new BizException(404, "该考试未设置科目");
+        }
+        BigDecimal fullScore = totalMode
+                ? examSubjects.stream().map(ExamSubject::getFullScore).filter(java.util.Objects::nonNull)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add)
+                : examSubjects.stream().filter(s -> s.getSubjectId().equals(subjectId)).findFirst()
+                        .orElseThrow(() -> new BizException(404, "该考试未设置此科目")).getFullScore();
+        List<Student> roster = studentMapper.selectList(new LambdaQueryWrapper<Student>()
+                .in(Student::getClassId, classIds)
+                .orderByAsc(Student::getClassId).orderByAsc(Student::getStudentNo));
+        Map<Long, String> classNames = clazzMapper.selectList(new LambdaQueryWrapper<Clazz>()
+                        .in(Clazz::getId, classIds)).stream()
+                .collect(Collectors.toMap(Clazz::getId, Clazz::getName, (a, b) -> a));
+        boolean rankVisible = canSeeRank(user);
+        Map<Long, Score> scores = null;
+        Map<Long, BigDecimal> totals = null;
+        Map<Long, Integer> classRankOf = null;
+        Map<Long, Integer> gradeRankOf = null;
+        if (totalMode) {
+            totals = new LinkedHashMap<>();
+            List<Long> subjectIds = examSubjects.stream().map(ExamSubject::getSubjectId).toList();
+            for (Score s : scoreMapper.selectList(new LambdaQueryWrapper<Score>().eq(Score::getExamId, examId))) {
+                if (subjectIds.contains(s.getSubjectId())) {
+                    totals.merge(s.getStudentId(), s.getScore(), BigDecimal::add);
+                }
+            }
+            if (rankVisible) { // 总分排名内存现算（全体名次+班内名次，同分同名次）；只读入口不耗这一步
+                List<Map.Entry<Long, BigDecimal>> sorted = totals.entrySet().stream()
+                        .sorted(Map.Entry.<Long, BigDecimal>comparingByValue().reversed()
+                                .thenComparing(Map.Entry::getKey)).toList();
+                gradeRankOf = new LinkedHashMap<>();
+                classRankOf = new LinkedHashMap<>();
+                assignTotalRanks(sorted, gradeRankOf);
+                Map<Long, Long> classOf = studentMapper.selectList(null).stream()
+                        .collect(Collectors.toMap(Student::getId, Student::getClassId, (a, b) -> a));
+                for (List<Map.Entry<Long, BigDecimal>> classRows : sorted.stream().collect(Collectors.groupingBy(
+                                e -> classOf.getOrDefault(e.getKey(), -1L), LinkedHashMap::new, Collectors.toList()))
+                        .values()) {
+                    assignTotalRanks(classRows, classRankOf);
+                }
+            }
+        } else {
+            scores = scoreMapper.selectList(new LambdaQueryWrapper<Score>()
+                            .eq(Score::getExamId, examId).eq(Score::getSubjectId, subjectId))
+                    .stream().collect(Collectors.toMap(Score::getStudentId, Function.identity(), (a, b) -> a));
+        }
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (Student st : roster) {
+            Score sc = scores != null ? scores.get(st.getId()) : null;
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("studentId", st.getId());
             m.put("studentNo", st.getStudentNo());
             m.put("name", st.getName());
-            m.put("score", sc != null ? sc.getScore() : null);
-            m.put("classRank", sc != null ? sc.getClassRank() : null);
-            m.put("gradeRank", sc != null ? sc.getGradeRank() : null);
-            return m;
-        }).toList();
+            m.put("classId", st.getClassId());
+            m.put("className", classNames.getOrDefault(st.getClassId(), "—"));
+            m.put("score", totalMode ? totals.get(st.getId()) : sc != null ? sc.getScore() : null);
+            m.put("classRank", !rankVisible ? null
+                    : totalMode ? classRankOf.get(st.getId()) : sc != null ? sc.getClassRank() : null);
+            m.put("gradeRank", !rankVisible ? null
+                    : totalMode ? gradeRankOf.get(st.getId()) : sc != null ? sc.getGradeRank() : null);
+            rows.add(m);
+        }
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("fullScore", es.getFullScore());
-        data.put("editable", canUpload(user, examId, classId));
+        data.put("fullScore", fullScore);
+        data.put("editable", !totalMode
+                && (classId != null ? canUpload(user, examId, classId) : canUploadRole(user, examId)));
+        data.put("canSeeRank", rankVisible);
         data.put("rows", rows);
         return data;
     }
 
-    /** 成绩导出（权限同查看 listScores）：当前表格 → xlsx（批49 查看者均含排名列） */
-    public Exported exportScores(UserPrincipal user, Long examId, Long subjectId, Long classId) {
-        Map<String, Object> data = listScores(user, examId, subjectId, classId); // 内含数据域校验
+    /** 总分竞争排名：同分同名次写入 rankOf */
+    private void assignTotalRanks(List<Map.Entry<Long, BigDecimal>> sorted, Map<Long, Integer> rankOf) {
+        int rank = 0;
+        BigDecimal prev = null;
+        for (int i = 0; i < sorted.size(); i++) {
+            Map.Entry<Long, BigDecimal> e = sorted.get(i);
+            if (prev == null || e.getValue().compareTo(prev) != 0) {
+                rank = i + 1;
+                prev = e.getValue();
+            }
+            rankOf.put(e.getKey(), rank);
+        }
+    }
+
+    /** 成绩导出（含名次列，批63 限排名可见的管理面角色；班主任/科任只读入口 403）：当前表格 → xlsx */
+    public Exported exportScores(UserPrincipal user, Long examId, Long subjectId, Long classId, Long gradeId) {
+        if (!canSeeRank(user)) {
+            throw new BizException(403, "成绩导出仅限管理面角色使用");
+        }
+        Map<String, Object> data = listScores(user, examId, subjectId, classId, gradeId); // 内含数据域校验
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> rows = (List<Map<String, Object>>) data.get("rows");
+        boolean singleClass = classId != null;
         List<Object[]> table = new ArrayList<>();
         for (Map<String, Object> r : rows) {
-            table.add(new Object[]{r.get("studentNo"), r.get("name"), r.get("score"),
-                    r.get("classRank"), r.get("gradeRank")});
+            table.add(singleClass
+                    ? new Object[]{r.get("studentNo"), r.get("name"), r.get("score"),
+                            r.get("classRank"), r.get("gradeRank")}
+                    : new Object[]{r.get("studentNo"), r.get("name"), r.get("className"), r.get("score"),
+                            r.get("classRank"), r.get("gradeRank")});
         }
         Exam exam = examMapper.selectById(examId);
-        Subject subject = subjectMapper.selectById(subjectId);
-        Clazz clazz = clazzMapper.selectById(classId);
-        String name = "成绩_" + (exam != null ? exam.getName() : examId) + "_"
-                + (subject != null ? subject.getName() : subjectId) + "_"
-                + (clazz != null ? clazz.getName() : classId) + ".xlsx";
-        return new Exported(name, excel.export("成绩",
-                new String[]{"学号", "姓名", "成绩", "班级排名", "年级排名"}, table));
+        Subject subject = subjectId == null ? null : subjectMapper.selectById(subjectId);
+        String subjectName = subjectId == null ? "总分" : subject != null ? subject.getName() : String.valueOf(subjectId);
+        String scopeName;
+        if (singleClass) {
+            Clazz clazz = clazzMapper.selectById(classId);
+            scopeName = clazz != null ? clazz.getName() : String.valueOf(classId);
+        } else {
+            Grade grade = gradeMapper.selectById(gradeId);
+            scopeName = grade != null ? grade.getName() : String.valueOf(gradeId);
+        }
+        String name = "成绩_" + (exam != null ? exam.getName() : examId) + "_" + subjectName + "_" + scopeName + ".xlsx";
+        return new Exported(name, excel.export("成绩", singleClass
+                ? new String[]{"学号", "姓名", subjectName, "班级排名", "年级排名"}
+                : new String[]{"学号", "姓名", "班级", subjectName, "班级排名", "年级排名"}, table));
     }
 
     // ───────────────── 录入 / 导入 ─────────────────
 
-    /** 批量录入：rows 中 score=null 表示清除该生该科成绩（批49：ADMIN/书记全校；级长限绑定年级且录入窗口开放） */
+    /** 批量录入：rows 中 score=null 表示清除该生该科成绩（批49：ADMIN/书记全校；级长限绑定年级且录入窗口开放）。
+     *  批63：classId 可空=年级模式，按 studentId 逐行校验（学生存在+属可见班级），跨班一次 recompute */
     public Map<String, Object> entry(UserPrincipal user, Long examId, Long subjectId, Long classId,
                                      List<RowReq> rows) {
         requireScoreUpload(user);
-        checkClassVisible(user, classId);
+        if (classId != null) {
+            checkClassVisible(user, classId);
+        }
         if ("GRADE_LEADER".equals(user.role()) && !examOpen(requireExam(examId))) {
             throw new BizException(403, "该考试录入已关闭");
         }
+        int saved = writeRows(user, examId, subjectId, classId, rows);
+        recompute(examId);
+        return Map.of("saved", saved);
+    }
+
+    /** 单科写（classId 空=按 studentId 跨班校验）；返回写入条数，不触 recompute（调用方统一收尾） */
+    private int writeRows(UserPrincipal user, Long examId, Long subjectId, Long classId, List<RowReq> rows) {
         ExamSubject es = requireExamSubject(examId, subjectId);
-        Map<Long, Student> roster = roster(classId).stream()
-                .collect(Collectors.toMap(Student::getId, Function.identity()));
+        Map<Long, Student> roster = classId != null
+                ? roster(classId).stream().collect(Collectors.toMap(Student::getId, Function.identity()))
+                : Map.of();
+        List<Long> visible = classId == null ? dataScope.visibleClassIds(user) : null;
         Map<Long, Score> existing = scoreMapper.selectList(new LambdaQueryWrapper<Score>()
                         .eq(Score::getExamId, examId).eq(Score::getSubjectId, subjectId))
                 .stream().collect(Collectors.toMap(Score::getStudentId, Function.identity(), (a, b) -> a));
@@ -233,8 +387,14 @@ public class ScoreService {
         }
         int saved = 0;
         for (RowReq r : rows) {
-            if (r.getStudentId() == null || !roster.containsKey(r.getStudentId())) {
-                throw new BizException(400, "学生不在该班级: " + r.getStudentId());
+            Student st = classId != null ? roster.get(r.getStudentId())
+                    : r.getStudentId() == null ? null : studentMapper.selectById(r.getStudentId());
+            if (st == null) {
+                throw new BizException(400, classId != null
+                        ? "学生不在该班级: " + r.getStudentId() : "学生不存在: " + r.getStudentId());
+            }
+            if (classId == null && visible != null && !visible.contains(st.getClassId())) {
+                throw new BizException(403, "无权录入该学生所在班级: " + st.getName());
             }
             Score old = existing.get(r.getStudentId());
             if (r.getScore() == null) {
@@ -244,7 +404,7 @@ public class ScoreService {
                 continue;
             }
             if (r.getScore().compareTo(BigDecimal.ZERO) < 0 || r.getScore().compareTo(es.getFullScore()) > 0) {
-                throw new BizException(400, roster.get(r.getStudentId()).getName()
+                throw new BizException(400, st.getName()
                         + " 的成绩超出 [0, " + es.getFullScore() + "]");
             }
             if (old != null) {
@@ -262,17 +422,29 @@ public class ScoreService {
             }
             saved++;
         }
-        recompute(examId);
-        return Map.of("saved", saved);
+        return saved;
     }
 
-    /** Excel 导入：按班内学号匹配，逐行 skip 原因（权限随 entry 收口） */
-    public Map<String, Object> importExcel(UserPrincipal user, Long examId, Long subjectId, Long classId,
-                                           MultipartFile file) {
-        ExamSubject es = requireExamSubject(examId, subjectId);
+    /** Excel 导入（单班多科，批63 模板各科列；权限随 entry 收口）。防呆：文件混入非本班学号→整单拒绝并列出，零写入；
+     *  某科留空=不动该生该科；超满分逐格 skip 列原因；一次 recompute */
+    public Map<String, Object> importExcel(UserPrincipal user, Long examId, Long classId, MultipartFile file) {
+        requireScoreUpload(user);
+        checkClassVisible(user, classId);
+        if ("GRADE_LEADER".equals(user.role()) && !examOpen(requireExam(examId))) {
+            throw new BizException(403, "该考试录入已关闭");
+        }
+        List<ExamSubject> examSubjects = examSubjectMapper.selectList(new LambdaQueryWrapper<ExamSubject>()
+                .eq(ExamSubject::getExamId, examId).orderByAsc(ExamSubject::getSubjectId));
+        if (examSubjects.isEmpty()) {
+            throw new BizException(404, "该考试未设置科目");
+        }
+        Map<Long, String> subjectNames = subjectMapper.selectList(null).stream()
+                .collect(Collectors.toMap(Subject::getId, Subject::getName, (a, b) -> a));
+        List<String> orderedNames = examSubjects.stream()
+                .map(es -> subjectNames.getOrDefault(es.getSubjectId(), String.valueOf(es.getSubjectId()))).toList();
         List<ExcelScoreHelper.ScoreRow> parsed;
         try (var in = file.getInputStream()) {
-            parsed = excel.read(in);
+            parsed = excel.read(in, orderedNames);
         } catch (BizException e) {
             throw e;
         } catch (Exception e) {
@@ -280,34 +452,58 @@ public class ScoreService {
         }
         Map<String, Student> byNo = roster(classId).stream()
                 .collect(Collectors.toMap(Student::getStudentNo, Function.identity(), (a, b) -> a));
-        List<RowReq> rows = new ArrayList<>();
+        Map<String, ExamSubject> byName = examSubjects.stream()
+                .collect(Collectors.toMap(es -> subjectNames.getOrDefault(es.getSubjectId(),
+                        String.valueOf(es.getSubjectId())), Function.identity(), (a, b) -> a));
+        Map<Long, List<RowReq>> bySubject = new LinkedHashMap<>();
         List<Map<String, Object>> skipped = new ArrayList<>();
+        List<String> foreignNos = new ArrayList<>();
         for (ExcelScoreHelper.ScoreRow r : parsed) {
             Student st = byNo.get(r.studentNo());
             if (st == null) {
-                skipped.add(Map.of("studentNo", r.studentNo(), "name", r.name(), "reason", "学号不在该班级"));
+                foreignNos.add(r.studentNo());
                 continue;
             }
-            if (r.score() == null) {
-                continue; // 成绩留空 = 不动该生
+            for (var en : r.scores().entrySet()) {
+                ExamSubject es = byName.get(en.getKey());
+                BigDecimal v = en.getValue();
+                if (v.compareTo(BigDecimal.ZERO) < 0 || v.compareTo(es.getFullScore()) > 0) {
+                    skipped.add(Map.of("studentNo", r.studentNo(), "name", r.name(), "subject", en.getKey(),
+                            "reason", "超出 [0, " + es.getFullScore() + "]"));
+                    continue;
+                }
+                bySubject.computeIfAbsent(es.getSubjectId(), k -> new ArrayList<>())
+                        .add(new RowReq(st.getId(), v));
             }
-            if (r.score().compareTo(BigDecimal.ZERO) < 0 || r.score().compareTo(es.getFullScore()) > 0) {
-                skipped.add(Map.of("studentNo", r.studentNo(), "name", r.name(),
-                        "reason", "超出 [0, " + es.getFullScore() + "]"));
-                continue;
-            }
-            rows.add(new RowReq(st.getId(), r.score()));
         }
-        Map<String, Object> result = new LinkedHashMap<>(entry(user, examId, subjectId, classId, rows));
+        if (!foreignNos.isEmpty()) { // 整单拒绝：任一学号不属该班即全部不导入（防错班串数据）
+            throw new BizException(400, "以下学号不属于该班级，为防误导整单已拒绝导入: " + String.join("、", foreignNos));
+        }
+        int saved = 0;
+        for (var en : bySubject.entrySet()) {
+            saved += writeRows(user, examId, en.getKey(), classId, en.getValue());
+        }
+        recompute(examId);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("saved", saved);
         result.put("skipped", skipped);
         return result;
     }
 
-    /** 下载导入模板（该班名册预填；权限同查看） */
-    public byte[] template(UserPrincipal user, Long classId) {
+    /** 下载导入模板（批63 按考试设定科目多列；该班名册预填；权限同查看） */
+    public byte[] template(UserPrincipal user, Long examId, Long classId) {
         requireScoreAccess(user);
         checkClassVisible(user, classId);
-        return excel.template(roster(classId));
+        List<ExamSubject> examSubjects = examSubjectMapper.selectList(new LambdaQueryWrapper<ExamSubject>()
+                .eq(ExamSubject::getExamId, requireExam(examId).getId()).orderByAsc(ExamSubject::getSubjectId));
+        if (examSubjects.isEmpty()) {
+            throw new BizException(404, "该考试未设置科目");
+        }
+        Map<Long, String> subjectNames = subjectMapper.selectList(null).stream()
+                .collect(Collectors.toMap(Subject::getId, Subject::getName, (a, b) -> a));
+        List<String> orderedNames = examSubjects.stream()
+                .map(es -> subjectNames.getOrDefault(es.getSubjectId(), String.valueOf(es.getSubjectId()))).toList();
+        return excel.template(roster(classId), orderedNames);
     }
 
     // ───────────────── 排名与最高分 ─────────────────
@@ -383,20 +579,29 @@ public class ScoreService {
     // ───────────────── 权限与查询小件 ─────────────────
 
     /**
-     * 批49 查看门（甲方口径）：ADMIN/书记（全校）、级长（绑定年级，班级面由 checkClassVisible 收口）、
-     * 校级领导（分管学段，只读）；其余角色按 SCORE_ALL 权限点只读（教学处主任/副主任按人授权）。
-     * 教师/班主任/生活老师/招采/门卫等一律 403（前端已零入口，此处兜底防直连）。
+     * 查看门：ADMIN/书记（全校）、级长（绑定年级，班级面由 checkClassVisible/targetClassIds 收口）、
+     * 校级领导（分管学段，只读）、SCORE_ALL 权限点（教学处主任/副主任按人授权，只读）；
+     * 批63 放开班主任/科任（挂名班/任课班只读，名次由 canSeeRank 收口不下发）。
+     * 生活老师/招采/门卫/家长等其余角色一律 403（前端零入口，此处兜底防直连）。
      */
     private void requireScoreAccess(UserPrincipal user) {
         String role = user.role();
         if ("ADMIN".equals(role) || "SECRETARY".equals(role) || "LEADER".equals(role)
-                || "GRADE_LEADER".equals(role)) {
+                || "GRADE_LEADER".equals(role)
+                || "HEAD_TEACHER".equals(role) || "TEACHER".equals(role)) { // 批63 班主任/科任只读入口
             return;
         }
         if (permissionService.hasScoreAll(user)) {
             return;
         }
-        throw new BizException(403, "成绩功能仅限管理员、书记、级长与校级领导使用");
+        throw new BizException(403, "成绩功能仅限管理员、书记、级长、校级领导、班主任与科任教师使用");
+    }
+
+    /** 批63 排名可见门：管理面角色+SCORE_ALL 可见；班主任/科任只读入口与家长线一律无名次（服务端置 null 唯一口径） */
+    private boolean canSeeRank(UserPrincipal user) {
+        String role = user.role();
+        return "ADMIN".equals(role) || "SECRETARY".equals(role) || "LEADER".equals(role)
+                || "GRADE_LEADER".equals(role) || permissionService.hasScoreAll(user);
     }
 
     /** 批49 上传门（可传可改）：ADMIN/书记（全校）+级长（绑定年级）；校级领导与 SCORE_ALL 只读 */
@@ -407,20 +612,26 @@ public class ScoreService {
         }
     }
 
-    /** 批49 可传改判定：ADMIN/书记=可；级长=班级在绑定年级内且录入窗口开放；其余只读 */
-    private boolean canUpload(UserPrincipal user, Long examId, Long classId) {
+    /** 批63 可传改角色线（不含班级归属）：ADMIN/书记=可；级长=录入窗口开放；班主任/科任/领导/SCORE_ALL 恒只读 */
+    private boolean canUploadRole(UserPrincipal user, Long examId) {
         String role = user.role();
         if ("ADMIN".equals(role) || "SECRETARY".equals(role)) {
             return true;
         }
-        if (!"GRADE_LEADER".equals(role)) {
+        return "GRADE_LEADER".equals(role)
+                && examOpen(examId == null ? null : examMapper.selectById(examId));
+    }
+
+    /** 批49 可传改判定：ADMIN/书记=可；级长=班级在绑定年级内且录入窗口开放；其余只读 */
+    private boolean canUpload(UserPrincipal user, Long examId, Long classId) {
+        if (!canUploadRole(user, examId)) {
             return false;
         }
-        if (!examOpen(examId == null ? null : examMapper.selectById(examId))) {
-            return false;
+        if ("GRADE_LEADER".equals(user.role())) {
+            List<Long> visible = dataScope.visibleClassIds(user);
+            return visible != null && visible.contains(classId);
         }
-        List<Long> visible = dataScope.visibleClassIds(user);
-        return visible != null && visible.contains(classId);
+        return true;
     }
 
     /** 批39③ 领导分管学段（t_user.stage_scope；非领导/未设置=null 即不受限） */
@@ -465,6 +676,36 @@ public class ScoreService {
         }
     }
 
+    /** 批63 目标班级：classId 单班（沿用 checkClassVisible）；gradeId 年级模式=该年级班 ∩ 可见班级
+     *  （ADMIN/书记/无限学段领导=全年级；年级无可见班级=403） */
+    private List<Long> targetClassIds(UserPrincipal user, Long classId, Long gradeId) {
+        if (classId != null) {
+            checkClassVisible(user, classId);
+            return List.of(classId);
+        }
+        if (gradeId == null) {
+            throw new BizException(400, "classId 与 gradeId 至少传一个");
+        }
+        if (gradeMapper.selectById(gradeId) == null) {
+            throw new BizException(404, "年级不存在");
+        }
+        List<Long> gradeClassIds = clazzMapper.selectList(new LambdaQueryWrapper<Clazz>()
+                        .eq(Clazz::getGradeId, gradeId).orderByAsc(Clazz::getId)).stream()
+                .map(Clazz::getId).toList();
+        if (gradeClassIds.isEmpty()) {
+            throw new BizException(404, "该年级暂无班级");
+        }
+        List<Long> visible = dataScope.visibleClassIds(user);
+        if (visible == null) {
+            return gradeClassIds;
+        }
+        List<Long> ids = gradeClassIds.stream().filter(visible::contains).toList();
+        if (ids.isEmpty()) {
+            throw new BizException(403, "无权访问该年级的班级（数据权限隔离）");
+        }
+        return ids;
+    }
+
     // ───────────────── 录入窗口 + 全校汇总 ─────────────────
 
     /** 考试录入窗口是否开放（旧数据无值=开；批49 仅约束级长录入） */
@@ -487,6 +728,9 @@ public class ScoreService {
      */
     public Map<String, Object> scoreSummary(UserPrincipal user, Long examId, Long subjectId, int page, int size) {
         requireScoreAccess(user);
+        if (!canSeeRank(user)) { // 汇总含全体年级排名：班主任/科任只读入口堵绕过
+            throw new BizException(403, "成绩汇总仅限管理面角色使用");
+        }
         Exam exam = requireExam(examId);
         List<ExamSubject> subjects = examSubjectMapper.selectList(new LambdaQueryWrapper<ExamSubject>()
                 .eq(ExamSubject::getExamId, examId).orderByAsc(ExamSubject::getSubjectId));

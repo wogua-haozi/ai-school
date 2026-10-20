@@ -19,6 +19,9 @@ public class Notification {
     /** 批32：请假登记回执（→家长）/ 审批结果同步（→门卫/生活老师） */
     public static final String LEAVE_NOTICE = "LEAVE_NOTICE";
     public static final String REGISTER_TODO = "REGISTER_TODO";
+    /** 批63 报修三层流转：待办（提交→后勤审批 / 通过→维修工接单）/ 结果（拒绝·接单·完成→报修人、完成抄送） */
+    public static final String REPAIR_TODO = "REPAIR_TODO";
+    public static final String REPAIR_RESULT = "REPAIR_RESULT";
     public static final String SYSTEM = "SYSTEM";
     public static final String ALERT = "ALERT";
 

@@ -242,6 +242,8 @@ public class RoleApprovalService {
             case "DIRECTOR" -> "学成中心主任";
             case "DORM" -> "生活老师";
             case "PROCUREMENT" -> "招采";
+            case "LOGISTICS" -> "后勤中心"; // 批63 报修审批
+            case "REPAIRER" -> "水电维修工"; // 批63 报修接单
             default -> role;
         };
     }

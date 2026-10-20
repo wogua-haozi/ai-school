@@ -41,16 +41,16 @@ const auth = useAuthStore()
 const running = computed(() => store.runningCount)
 
 const sheetOpen = ref(false)
-// 批49：成绩入口按成绩可见门过滤（教师/班主任不再出现）
+// 批49 建门；批63 放开班主任/科任（只读，进入后无排名列无保存）
 const actions = computed<ActionSheetAction[]>(() => [
   { name: '拍照记录', subname: '微光时刻 · 随手拍', icon: 'photograph' },
   { name: '微光瞬间', subname: '班级微光照片墙', icon: 'photo-o' },
   { name: '素养评价', subname: '课堂/作业表现', icon: 'edit' },
-  ...(auth.scoreAccess ? [{ name: '成绩录入', subname: '学科成绩', icon: 'bar-chart-o' }] : []),
+  ...(auth.scoreAccess ? [{ name: '成绩管理', subname: '学科成绩', icon: 'bar-chart-o' }] : []),
   { name: '课程记录', subname: '扬长课程活动', icon: 'flag-o' },
   { name: '荣誉记录', subname: '获奖证书', icon: 'medal-o' },
 ])
-const routes: Record<string, string> = { '拍照记录': '/moment/new', '微光瞬间': '/moment', '素养评价': '/evaluate', '成绩录入': '/scores', '课程记录': '/activity', '荣誉记录': '/honor' }
+const routes: Record<string, string> = { '拍照记录': '/moment/new', '微光瞬间': '/moment', '素养评价': '/evaluate', '成绩管理': '/scores', '课程记录': '/activity', '荣誉记录': '/honor' }
 
 function onSelect(action: ActionSheetAction) {
   sheetOpen.value = false

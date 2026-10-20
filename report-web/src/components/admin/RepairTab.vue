@@ -2,9 +2,12 @@
   <div>
     <div class="bar">
       <el-select v-model="qStatus" clearable placeholder="状态" style="width: 130px" @change="load">
-        <el-option value="PENDING" label="待处理" />
+        <el-option value="PENDING" label="待审批" />
+        <el-option value="APPROVED" label="待接单" />
+        <el-option value="CLAIMED" label="维修中" />
         <el-option value="DONE" label="已完成" />
         <el-option value="REJECTED" label="不予受理" />
+        <el-option value="CANCELED" label="已撤回" />
       </el-select>
     </div>
     <el-table :data="rows" size="small">
@@ -12,6 +15,12 @@
       <el-table-column prop="location" label="地点/设施" min-width="150" show-overflow-tooltip />
       <el-table-column prop="description" label="故障描述" min-width="200" show-overflow-tooltip />
       <el-table-column prop="reporterName" label="报修人" width="90" />
+      <el-table-column label="审批人" width="90">
+        <template #default="{ row }">{{ row.approverName || '—' }}</template>
+      </el-table-column>
+      <el-table-column label="接单人" width="90">
+        <template #default="{ row }">{{ row.claimerName || '—' }}</template>
+      </el-table-column>
       <el-table-column label="凭证" width="60">
         <template #default="{ row }">{{ row.photoCount || '—' }}</template>
       </el-table-column>
@@ -39,9 +48,13 @@
           <el-descriptions-item label="故障描述">{{ detail.description }}</el-descriptions-item>
           <el-descriptions-item label="报修人">{{ detail.reporterName }}</el-descriptions-item>
           <el-descriptions-item label="报修时间">{{ fmtTime(detail.createTime) }}</el-descriptions-item>
-          <el-descriptions-item v-if="detail.status !== 'PENDING'" label="处理结果">
-            {{ stLabel(detail.status) }} · {{ detail.handlerName }} · {{ fmtTime(detail.handleTime) }}
-            <template v-if="detail.handleNote">（{{ detail.handleNote }}）</template>
+          <el-descriptions-item v-if="detail.status !== 'PENDING'" label="流转进度">
+            <template v-if="detail.approverName">审批：{{ detail.approverName }} · {{ fmtTime(detail.approveTime) }}<template v-if="detail.approveNote">（{{ detail.approveNote }}）</template><br /></template>
+            <template v-if="detail.claimerName">接单：{{ detail.claimerName }} · {{ fmtTime(detail.claimTime) }}<br /></template>
+            <template v-if="detail.status === 'DONE' || detail.status === 'REJECTED'">结果：{{ stLabel(detail.status) }} · {{ detail.handlerName }} · {{ fmtTime(detail.handleTime) }}
+              <template v-if="detail.handleNote">（{{ detail.handleNote }}）</template>
+            </template>
+            <template v-else>当前：{{ stLabel(detail.status) }}</template>
           </el-descriptions-item>
         </el-descriptions>
         <div v-if="imgs.length" class="shots">
@@ -101,10 +114,12 @@ function fmtTime(t?: string) {
   return t ? t.slice(0, 16).replace('T', ' ') : '—'
 }
 function stLabel(s: string) {
-  return ({ PENDING: '待处理', DONE: '已完成', REJECTED: '不予受理', CANCELED: '已撤回' } as Record<string, string>)[s] || s
+  return ({ PENDING: '待审批', APPROVED: '待接单', CLAIMED: '维修中', DONE: '已完成',
+    REJECTED: '不予受理', CANCELED: '已撤回' } as Record<string, string>)[s] || s
 }
 function tagType(s: string) {
-  return ({ PENDING: 'warning', DONE: 'success', REJECTED: 'info', CANCELED: 'info' } as Record<string, string>)[s] || 'info'
+  return ({ PENDING: 'warning', APPROVED: 'warning', CLAIMED: '', DONE: 'success',
+    REJECTED: 'info', CANCELED: 'info' } as Record<string, string>)[s] || 'info'
 }
 
 onMounted(load)

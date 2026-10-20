@@ -33,8 +33,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class HealthScanService {
 
-    /** 批8 学号规则：标识(小1/初2)+入学年2位+班号2位+编号2位 */
-    private static final Pattern STUDENT_NO = Pattern.compile("^[12][0-9]{6}$");
+    /** 批63 学号规则（同期末考号）：年份2位+年级1位+校码363+班号2位+座位号2位，如 2773630101 */
+    private static final Pattern STUDENT_NO = Pattern.compile("^2[0-9]363[0-9]{4}$");
 
     private final UserMapper userMapper;
     private final StudentMapper studentMapper;

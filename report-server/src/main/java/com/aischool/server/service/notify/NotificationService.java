@@ -153,6 +153,18 @@ public class NotificationService {
         }
     }
 
+    // ────────────────────────── 报修三层流转（批63） ──────────────────────────
+
+    /** 报修待办：提交→通知后勤中心（LOGISTICS）审批；审批通过→通知维修工（REPAIRER）抢单（按角色广播） */
+    public void repairTodo(String role, String title, String content) {
+        sendToRoles(List.of(role), Notification.REPAIR_TODO, title, content, "/repair");
+    }
+
+    /** 报修结果（批63）：拒绝/接单/完成→报修人；完成抄送 repair_cc_uids 名单 */
+    public void repairResult(Long userId, String title, String content) {
+        send(userId, Notification.REPAIR_RESULT, title, content, "/repair");
+    }
+
     /** 账号/注册待审批：通知全部启用中的管理员+领导（App 链接按角色分流）；self=教师自助注册 */
     public void registerTodo(String targetName, String targetRoleName, String requesterName, boolean self) {
         String detail = self

@@ -256,6 +256,7 @@ function roleName(r: string) {
   return {
     ADMIN: '管理员', LEADER: '领导', HEAD_TEACHER: '班主任', TEACHER: '任课教师',
     GRADE_LEADER: '级长', DIRECTOR: '学成中心主任', SECRETARY: '书记', DORM: '生活老师', PROCUREMENT: '招采', GUARD: '门卫',
+    LOGISTICS: '后勤中心', REPAIRER: '水电维修工',
   }[r] ?? r
 }
 

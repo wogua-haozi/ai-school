@@ -75,7 +75,7 @@
       <div style="padding-top: 10px">
         <van-field v-if="!isDorm" v-model="editForm.name" label="姓名" placeholder="学生姓名" />
         <van-field v-if="!isDorm" v-model="editForm.genderStr" label="性别" placeholder="男 / 女 / 留空" />
-        <van-field v-if="!isDorm" v-model="editForm.studentNo" label="学号" placeholder="7 位：标识+入学年+班号+编号" />
+        <van-field v-if="!isDorm" v-model="editForm.studentNo" label="学号" placeholder="10 位：年份年级+校码363+班号+座位" />
         <van-field v-if="!isDorm" v-model="editForm.guardianName" label="家长姓名" placeholder="留空=清除" />
         <van-field v-if="!isDorm" v-model="editForm.guardianPhone" label="家长电话" placeholder="留空=清除" />
         <van-field v-model="editForm.dormBuilding" label="宿舍楼" placeholder="留空=清除" />

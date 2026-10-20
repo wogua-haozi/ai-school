@@ -2,12 +2,16 @@ package com.aischool.server.service.repair;
 
 import com.aischool.server.common.BizException;
 import com.aischool.server.entity.Repair;
+import com.aischool.server.entity.SysConfig;
 import com.aischool.server.entity.User;
 import com.aischool.server.mapper.RepairMapper;
+import com.aischool.server.mapper.SysConfigMapper;
 import com.aischool.server.mapper.UserMapper;
 import com.aischool.server.security.UserPrincipal;
+import com.aischool.server.service.notify.NotificationService;
 import com.aischool.server.service.report.PdfStoreService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -24,8 +28,10 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
- * 报修单（批10）：文字描述+拍照凭证（≤3 张，MinIO repair/ 前缀，同微光照片模式）。
- * 工单模型不走审批流：提交 PENDING → 管理端处理 DONE/REJECTED。
+ * 报修单（批10；批63 三层流转）：文字描述+拍照凭证（≤3 张，MinIO repair/ 前缀，同微光照片模式）。
+ * 提交 PENDING → 后勤中心（LOGISTICS）任一人审批 → APPROVED（全部维修工 REPAIRER 可见，任一人抢单 CLAIMED，
+ * 条件更新防双抢）→ 接单人完成 DONE → 通知报修人+抄送 repair_cc_uids；拒绝 REJECTED；报修人 PENDING/APPROVED 可撤回。
+ * 管理端 handle 兜底：非终态可直办（三层流转未走通时）。
  */
 @Service
 @RequiredArgsConstructor
@@ -36,7 +42,9 @@ public class RepairService {
 
     private final RepairMapper repairMapper;
     private final UserMapper userMapper;
+    private final SysConfigMapper sysConfigMapper;
     private final PdfStoreService pdfStore;
+    private final NotificationService notificationService;
 
     public Map<String, Object> create(UserPrincipal user, String location, String description,
                                       List<MultipartFile> photos) {
@@ -85,7 +93,102 @@ public class RepairService {
         r.setPhotos(objects.isEmpty() ? null : toJson(objects));
         r.setStatus(Repair.PENDING);
         repairMapper.insert(r);
+        notificationService.repairTodo("LOGISTICS", "待审批：报修单",
+                realName(user.userId()) + " 提交的「" + r.getLocation() + "」报修单等待您审批（单号 #" + r.getId() + "）");
         return Map.of("repairId", r.getId());
+    }
+
+    /** 批63 后勤审批：PENDING → APPROVED（通知全部维修工抢单）/ REJECTED（通知报修人） */
+    public void approve(Long id, UserPrincipal user, boolean approved, String note) {
+        if (!"LOGISTICS".equals(user.role())) {
+            throw new BizException(403, "仅后勤中心可审批报修单");
+        }
+        Repair r = require(id);
+        if (!Repair.PENDING.equals(r.getStatus())) {
+            throw new BizException(400, "该报修单不在待审批状态");
+        }
+        if (note != null && note.length() > 300) {
+            throw new BizException(400, "审批意见不能超过 300 字");
+        }
+        r.setStatus(approved ? Repair.APPROVED : Repair.REJECTED);
+        r.setApproverId(user.userId());
+        r.setApproveTime(LocalDateTime.now());
+        r.setApproveNote(note);
+        repairMapper.updateById(r);
+        if (approved) {
+            notificationService.repairTodo("REPAIRER", "待接单：报修单",
+                    "「" + r.getLocation() + "」报修单已审批通过，等待接单（单号 #" + r.getId() + "）");
+        } else {
+            notificationService.repairResult(r.getReporterId(), "报修单未通过审批",
+                    "您提交的「" + r.getLocation() + "」报修单未通过审批"
+                            + (note == null || note.isBlank() ? "" : "，意见：" + note));
+        }
+    }
+
+    /** 批63 维修工接单（抢单）：条件更新 WHERE status=APPROVED 防双抢，0 行=已被他人接走 */
+    public void claim(Long id, UserPrincipal user) {
+        if (!"REPAIRER".equals(user.role())) {
+            throw new BizException(403, "仅维修工可接单");
+        }
+        Repair r = require(id);
+        Repair upd = new Repair();
+        upd.setStatus(Repair.CLAIMED);
+        upd.setClaimerId(user.userId());
+        upd.setClaimTime(LocalDateTime.now());
+        int rows = repairMapper.update(upd, new LambdaUpdateWrapper<Repair>()
+                .eq(Repair::getId, id).eq(Repair::getStatus, Repair.APPROVED));
+        if (rows == 0) {
+            throw new BizException(400, "该报修单已被他人接单或状态已变化");
+        }
+        notificationService.repairResult(r.getReporterId(), "报修已接单",
+                "您提交的「" + r.getLocation() + "」报修单已由 " + realName(user.userId()) + " 接单维修");
+    }
+
+    /** 批63 接单人完成：CLAIMED → DONE（handler=接单人本人）；通知报修人+逐个抄送 repair_cc_uids */
+    public void complete(Long id, UserPrincipal user, String note) {
+        Repair r = require(id);
+        if (!user.userId().equals(r.getClaimerId())) {
+            throw new BizException(403, "仅接单维修工本人可标记完成");
+        }
+        if (!Repair.CLAIMED.equals(r.getStatus())) {
+            throw new BizException(400, "该报修单不在维修中状态");
+        }
+        if (note != null && note.length() > 300) {
+            throw new BizException(400, "处理说明不能超过 300 字");
+        }
+        r.setStatus(Repair.DONE);
+        r.setHandlerId(user.userId());
+        r.setHandleNote(note);
+        r.setHandleTime(LocalDateTime.now());
+        repairMapper.updateById(r);
+        String who = realName(user.userId());
+        notificationService.repairResult(r.getReporterId(), "报修已完成",
+                "您提交的「" + r.getLocation() + "」报修单已由 " + who + " 完成维修"
+                        + (note == null || note.isBlank() ? "" : "，说明：" + note));
+        for (Long ccId : ccUids()) {
+            if (!ccId.equals(user.userId())) {
+                notificationService.repairResult(ccId, "报修完成抄送",
+                        "「" + r.getLocation() + "」报修单（单号 #" + r.getId() + "）已由 " + who + " 完成维修，请知悉");
+            }
+        }
+    }
+
+    /** 批63 工作台（按角色分流）：LOGISTICS=待审批；REPAIRER=待接单抢单池+我的维修中 */
+    public Map<String, Object> workbench(UserPrincipal user) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        if ("LOGISTICS".equals(user.role())) {
+            data.put("todo", toRows(repairMapper.selectList(new LambdaQueryWrapper<Repair>()
+                    .eq(Repair::getStatus, Repair.PENDING).orderByAsc(Repair::getId))));
+        } else if ("REPAIRER".equals(user.role())) {
+            data.put("open", toRows(repairMapper.selectList(new LambdaQueryWrapper<Repair>()
+                    .eq(Repair::getStatus, Repair.APPROVED).orderByAsc(Repair::getId))));
+            data.put("mine", toRows(repairMapper.selectList(new LambdaQueryWrapper<Repair>()
+                    .eq(Repair::getClaimerId, user.userId())
+                    .eq(Repair::getStatus, Repair.CLAIMED).orderByAsc(Repair::getId))));
+        } else {
+            throw new BizException(403, "报修工作台仅后勤中心与维修工使用");
+        }
+        return data;
     }
 
     /** 我的报修 */
@@ -103,24 +206,27 @@ public class RepairService {
                 .orderByDesc(Repair::getId)));
     }
 
-    /** 详情（报修人本人或管理员） */
+    /** 详情（报修人本人/后勤/维修工/管理员） */
     public Map<String, Object> detail(Long id, UserPrincipal user) {
         Repair r = require(id);
         checkVisible(r, user);
-        Map<Long, String> names = userNames(java.util.stream.Stream.of(r.getReporterId(), r.getHandlerId())
-                .filter(java.util.Objects::nonNull).distinct().toList()); // handlerId 未处理时为 null，List.of 会 NPE
+        Map<Long, String> names = userNames(java.util.stream.Stream.of(
+                        r.getReporterId(), r.getHandlerId(), r.getApproverId(), r.getClaimerId())
+                .filter(java.util.Objects::nonNull).distinct().toList()); // 未处理时为 null，List.of 会 NPE
         Map<String, Object> m = rowOf(r, names);
         m.put("description", r.getDescription());
         m.put("handleNote", r.getHandleNote() == null ? "" : r.getHandleNote());
         m.put("handlerName", r.getHandlerId() == null ? "" : names.getOrDefault(r.getHandlerId(), ""));
         m.put("handleTime", r.getHandleTime());
+        m.put("approveNote", r.getApproveNote() == null ? "" : r.getApproveNote());
         return m;
     }
 
-    /** 处理：PENDING → DONE/REJECTED */
+    /** 管理端兜底处理（批63 放宽到非终态）：DONE/REJECTED；三层流转走不通时管理员直办 */
     public void handle(Long id, UserPrincipal admin, String status, String note) {
         Repair r = require(id);
-        if (!Repair.PENDING.equals(r.getStatus())) {
+        if (Repair.DONE.equals(r.getStatus()) || Repair.REJECTED.equals(r.getStatus())
+                || Repair.CANCELED.equals(r.getStatus())) {
             throw new BizException(400, "该报修单已处理结束");
         }
         if (!Repair.DONE.equals(status) && !Repair.REJECTED.equals(status)) {
@@ -134,16 +240,20 @@ public class RepairService {
         r.setHandleNote(note);
         r.setHandleTime(LocalDateTime.now());
         repairMapper.updateById(r);
+        notificationService.repairResult(r.getReporterId(), Repair.DONE.equals(status) ? "报修已处理" : "报修不予受理",
+                "您提交的「" + r.getLocation() + "」报修单已由管理员"
+                        + (Repair.DONE.equals(status) ? "办结" : "标记不予受理")
+                        + (note == null || note.isBlank() ? "" : "，说明：" + note));
     }
 
-    /** 批40e 撤回普适：发起人撤回报修单（仅 PENDING 未处理时可撤；凭证照片对象一并清理） */
+    /** 批40e 撤回普适（批63 放宽）：发起人撤回报修单（PENDING/APPROVED 未接单时可撤；凭证照片对象一并清理） */
     public void cancel(Long id, UserPrincipal user) {
         Repair r = require(id);
         if (!r.getReporterId().equals(user.userId())) {
             throw new BizException(403, "只有报修人本人可撤回报修单");
         }
-        if (!Repair.PENDING.equals(r.getStatus())) {
-            throw new BizException(400, "该报修单已处理，不能撤回");
+        if (!Repair.PENDING.equals(r.getStatus()) && !Repair.APPROVED.equals(r.getStatus())) {
+            throw new BizException(400, "该报修单已被接单或已结束，不能撤回");
         }
         for (String objectName : parsePhotos(r.getPhotos())) {
             pdfStore.delete(objectName);
@@ -165,9 +275,12 @@ public class RepairService {
     }
 
     private void checkVisible(Repair r, UserPrincipal user) {
-        if (!"ADMIN".equals(user.role()) && !r.getReporterId().equals(user.userId())) {
-            throw new BizException(403, "仅报修人与管理员可查看该报修单");
+        String role = user.role();
+        if ("ADMIN".equals(role) || "LOGISTICS".equals(role) || "REPAIRER".equals(role)
+                || r.getReporterId().equals(user.userId())) { // 批63 放行后勤/维修工（审批与接单要看详情+照片）
+            return;
         }
+        throw new BizException(403, "仅报修人、后勤中心、维修工与管理员可查看该报修单");
     }
 
     Repair require(Long id) {
@@ -180,7 +293,8 @@ public class RepairService {
 
     private List<Map<String, Object>> toRows(List<Repair> rows) {
         Map<Long, String> names = userNames(rows.stream()
-                .flatMap(r -> java.util.stream.Stream.of(r.getReporterId(), r.getHandlerId()))
+                .flatMap(r -> java.util.stream.Stream.of(r.getReporterId(), r.getHandlerId(),
+                        r.getApproverId(), r.getClaimerId()))
                 .filter(java.util.Objects::nonNull).distinct().toList());
         return rows.stream().map(r -> rowOf(r, names)).collect(Collectors.toList());
     }
@@ -192,6 +306,10 @@ public class RepairService {
         m.put("description", r.getDescription());
         m.put("status", r.getStatus());
         m.put("reporterName", names.getOrDefault(r.getReporterId(), ""));
+        m.put("approverName", r.getApproverId() == null ? "" : names.getOrDefault(r.getApproverId(), ""));
+        m.put("approveTime", r.getApproveTime());
+        m.put("claimerName", r.getClaimerId() == null ? "" : names.getOrDefault(r.getClaimerId(), ""));
+        m.put("claimTime", r.getClaimTime());
         m.put("handlerName", r.getHandlerId() == null ? "" : names.getOrDefault(r.getHandlerId(), ""));
         m.put("handleNote", r.getHandleNote() == null ? "" : r.getHandleNote());
         m.put("handleTime", r.getHandleTime());
@@ -203,6 +321,27 @@ public class RepairService {
         m.put("photoCount", urls.size());
         m.put("photoUrls", urls);
         return m;
+    }
+
+    private String realName(Long userId) {
+        User u = userMapper.selectById(userId);
+        return u == null ? "" : u.getRealName();
+    }
+
+    /** 批63 抄送名单：t_sys_config repair_cc_uids（逗号分隔用户 id；生产填 4 后勤+冯荣森+杜伟滨） */
+    private List<Long> ccUids() {
+        SysConfig c = sysConfigMapper.selectById("repair_cc_uids");
+        if (c == null || c.getCfgValue() == null || c.getCfgValue().isBlank()) {
+            return List.of();
+        }
+        List<Long> ids = new ArrayList<>();
+        for (String s : c.getCfgValue().split(",")) {
+            try {
+                ids.add(Long.parseLong(s.trim()));
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return ids;
     }
 
     private Map<Long, String> userNames(List<Long> ids) {

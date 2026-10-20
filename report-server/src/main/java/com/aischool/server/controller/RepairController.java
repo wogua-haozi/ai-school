@@ -5,6 +5,7 @@ import com.aischool.server.common.BizException;
 import com.aischool.server.security.AuthUtil;
 import com.aischool.server.service.report.PdfStoreService;
 import com.aischool.server.service.repair.RepairService;
+import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.CacheControl;
@@ -52,11 +53,49 @@ public class RepairController {
         return ApiResponse.ok(repairService.detail(id, AuthUtil.current()));
     }
 
-    /** 批40e 撤回普适：发起人撤回报修单（仅未处理时） */
+    /** 批40e 撤回普适（批63 放宽）：发起人撤回报修单（未接单时） */
     @PutMapping("/{id}/cancel")
     public ApiResponse<Void> cancel(@PathVariable Long id) {
         repairService.cancel(id, AuthUtil.current());
         return ApiResponse.ok();
+    }
+
+    /** 批63 工作台：后勤=待审批；维修工=待接单抢单池+我的维修中 */
+    @GetMapping("/workbench")
+    public ApiResponse<Map<String, Object>> workbench() {
+        return ApiResponse.ok(repairService.workbench(AuthUtil.current()));
+    }
+
+    /** 批63 后勤审批：approved=true 通过（转维修工抢单）/ false 拒绝（通知报修人） */
+    @PutMapping("/{id}/approve")
+    public ApiResponse<Void> approve(@PathVariable Long id, @RequestBody ApproveReq req) {
+        repairService.approve(id, AuthUtil.current(), Boolean.TRUE.equals(req.getApproved()), req.getNote());
+        return ApiResponse.ok();
+    }
+
+    @Data
+    public static class ApproveReq {
+        private Boolean approved;
+        private String note;
+    }
+
+    /** 批63 维修工接单（抢单，先到先得） */
+    @PutMapping("/{id}/claim")
+    public ApiResponse<Void> claim(@PathVariable Long id) {
+        repairService.claim(id, AuthUtil.current());
+        return ApiResponse.ok();
+    }
+
+    /** 批63 接单人完成（通知报修人+抄送名单） */
+    @PutMapping("/{id}/complete")
+    public ApiResponse<Void> complete(@PathVariable Long id, @RequestBody CompleteReq req) {
+        repairService.complete(id, AuthUtil.current(), req.getNote());
+        return ApiResponse.ok();
+    }
+
+    @Data
+    public static class CompleteReq {
+        private String note;
     }
 
     /** 凭证照片预览（inline，流式+ETag+缓存，同微光照片模式） */

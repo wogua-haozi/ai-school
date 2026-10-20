@@ -38,6 +38,8 @@ public class AdminRepairController {
         repairService.handle(id, AuthUtil.current(), req.getStatus(), req.getNote());
         return ApiResponse.ok();
     }
+    // 批63 三层流转上线后，日常处理走教师端 /api/repair/{id}/approve|claim|complete；
+    // 本端点保留为管理员兜底（非终态可直办 DONE/REJECTED）
 
     @Data
     public static class HandleReq {

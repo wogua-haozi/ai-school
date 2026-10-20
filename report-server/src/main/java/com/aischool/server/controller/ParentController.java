@@ -51,7 +51,7 @@ import java.util.stream.Collectors;
 /**
  * 家长端（App 内 PARENT 角色分流进入）。
  * 白名单隔离：家长在 DataScopeService 落 default 403，全部教师/管理接口天然不可达，
- * 仅此处按 t_parent_binding 放行绑定孩子的只读信息；成绩相关任何接口不提供（方案A 家长全不可见）。
+ * 仅此处按 t_parent_binding 放行绑定孩子的只读信息；批63 成绩放开分数+等级（刻意无排名，见 /children/{id}/scores）。
  */
 @RestController
 @RequestMapping("/api/parent")
@@ -71,6 +71,8 @@ public class ParentController {
     private final com.aischool.server.service.conduct.ParentWalletService parentWalletService;
     private final ReportMapper reportMapper;
     private final TermMapper termMapper;
+    private final com.aischool.server.service.score.ParentScoreService parentScoreService;
+    private final com.aischool.server.service.score.ScoreLevelService scoreLevelService;
 
     private void checkParent() {
         if (!"PARENT".equals(AuthUtil.current().role())) {
@@ -474,5 +476,17 @@ public class ParentController {
         checkParent();
         requireBound(studentId);
         return ApiResponse.ok(parentWalletService.walletOf(studentId));
+    }
+
+    // ────────────────────────── 批63：成绩（分数+等级，无排名） ──────────────────────────
+
+    /** 孩子历次成绩：按考试倒序分组，每科分数+满分+等级（现算）；白名单输出，无任何名次字段；note=等级换算口径（随配置实时生效） */
+    @GetMapping("/children/{studentId}/scores")
+    public ApiResponse<Map<String, Object>> scores(@PathVariable Long studentId) {
+        checkParent();
+        requireBound(studentId);
+        return ApiResponse.ok(Map.of(
+                "note", scoreLevelService.note(),
+                "exams", parentScoreService.scoresOf(studentId)));
     }
 }

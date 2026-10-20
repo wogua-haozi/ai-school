@@ -73,9 +73,10 @@ public class AdminUserController {
     /** 批量导入的统一初始密码（导入后教师首登强制改密） */
     public static final String INITIAL_PASSWORD = "Shishi@2026";
 
-    /** 本控制器管理的角色（家长 PARENT 走 AdminParentController；批32 加级长/主任/生活老师/招采；批39④ 加书记） */
+    /** 本控制器管理的角色（家长 PARENT 走 AdminParentController；批32 加级长/主任/生活老师/招采；批39④ 加书记；
+     *  批63 加后勤中心/维修工——报修三层流转） */
     private static final List<String> ROLES = List.of("ADMIN", "LEADER", "HEAD_TEACHER", "TEACHER", "GUARD",
-            "GRADE_LEADER", "DIRECTOR", "DORM", "PROCUREMENT", "SECRETARY");
+            "GRADE_LEADER", "DIRECTOR", "DORM", "PROCUREMENT", "SECRETARY", "LOGISTICS", "REPAIRER");
 
     private void checkAdmin() {
         permissionService.checkAdminAccess("只有管理员可操作系统管理");
@@ -201,7 +202,7 @@ public class AdminUserController {
     public ApiResponse<Map<String, Object>> createUser(@Validated @RequestBody UserReq req) {
         checkAdmin();
         if (!ROLES.contains(req.getRole())) {
-            throw new BizException(400, "role 必须是 ADMIN/LEADER/HEAD_TEACHER/TEACHER/GUARD/GRADE_LEADER/DIRECTOR/DORM/PROCUREMENT/SECRETARY");
+            throw new BizException(400, "role 必须是 ADMIN/LEADER/HEAD_TEACHER/TEACHER/GUARD/GRADE_LEADER/DIRECTOR/DORM/PROCUREMENT/SECRETARY/LOGISTICS/REPAIRER");
         }
         if (userMapper.selectCount(new LambdaQueryWrapper<User>().eq(User::getUsername, req.getUsername())) > 0) {
             throw new BizException(400, "用户名已存在");
@@ -250,7 +251,8 @@ public class AdminUserController {
                 java.util.Map.entry("班主任", "HEAD_TEACHER"), java.util.Map.entry("教师", "TEACHER"),
                 java.util.Map.entry("门卫", "GUARD"), java.util.Map.entry("级长", "GRADE_LEADER"),
                 java.util.Map.entry("学成中心主任", "DIRECTOR"), java.util.Map.entry("生活老师", "DORM"),
-                java.util.Map.entry("招采", "PROCUREMENT"));
+                java.util.Map.entry("招采", "PROCUREMENT"), java.util.Map.entry("书记", "SECRETARY"),
+                java.util.Map.entry("后勤中心", "LOGISTICS"), java.util.Map.entry("水电维修工", "REPAIRER"));
         Set<String> seen = new HashSet<>();
         List<Map<String, Object>> errors = new java.util.ArrayList<>();
         int inserted = 0;
@@ -388,7 +390,7 @@ public class AdminUserController {
             throw new BizException(400, "不能修改自己的角色");
         }
         if (req.getRole() != null && !ROLES.contains(req.getRole())) {
-            throw new BizException(400, "role 必须是 ADMIN/LEADER/HEAD_TEACHER/TEACHER/GUARD/GRADE_LEADER/DIRECTOR/DORM/PROCUREMENT/SECRETARY");
+            throw new BizException(400, "role 必须是 ADMIN/LEADER/HEAD_TEACHER/TEACHER/GUARD/GRADE_LEADER/DIRECTOR/DORM/PROCUREMENT/SECRETARY/LOGISTICS/REPAIRER");
         }
         String newRole = req.getRole() != null ? req.getRole() : u.getRole();
         // 换绑登录名（批8.5）：非空才改；唯一性+格式校验，改名后原 token 不受影响（按 userId 鉴权）

@@ -73,6 +73,7 @@ public class ReportDataBuilder {
     private final MomentStudentMapper momentStudentMapper;
     private final PdfStoreService pdfStore;
     private final PortraitService portraitService;
+    private final com.aischool.server.service.score.ScoreLevelService scoreLevelService;
 
     public Map<String, Object> build(Long studentId, Long termId) {
         return build(studentId, termId, null);
@@ -133,7 +134,43 @@ public class ReportDataBuilder {
         data.put("comprehensive", buildComprehensive(student, term));
         data.put("headTeacherComment", buildHeadTeacherComment(student, term));
         data.put("moments", buildMoments(student, term));
+        // 批63 家长版期末成绩页：分数+满分+等级（无排名）；教师版模板不渲染此键（渲染产物零影响）
+        data.put("examScores", buildExamScores(student, term));
         return data;
+    }
+
+    /** 批63 家长版期末成绩页素材：学期最新考试各科 分数/满分/等级（等级按满分比例现算，不入库） */
+    private Map<String, Object> buildExamScores(Student student, Term term) {
+        Exam exam = latestExam(term.getId());
+        Map<String, Object> m = new LinkedHashMap<>();
+        if (exam == null) {
+            m.put("examName", "");
+            m.put("subjects", List.of());
+            return m;
+        }
+        Map<Long, Subject> subjects = allSubjects();
+        List<ExamSubject> ordered = examSubjectMapper.selectList(new LambdaQueryWrapper<ExamSubject>()
+                        .eq(ExamSubject::getExamId, exam.getId())).stream()
+                .sorted(Comparator.comparing(es -> subjects.containsKey(es.getSubjectId())
+                        ? subjects.get(es.getSubjectId()).getSort() : Integer.MAX_VALUE))
+                .toList();
+        Map<Long, Score> scoreBySubject = scoreMapper.selectList(new LambdaQueryWrapper<Score>()
+                        .eq(Score::getExamId, exam.getId()).eq(Score::getStudentId, student.getId()))
+                .stream().collect(Collectors.toMap(Score::getSubjectId, s -> s));
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (ExamSubject es : ordered) {
+            Score sc = scoreBySubject.get(es.getSubjectId());
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("name", subjects.containsKey(es.getSubjectId())
+                    ? subjects.get(es.getSubjectId()).getName() : String.valueOf(es.getSubjectId()));
+            row.put("score", Num.of(sc != null ? sc.getScore() : null));
+            row.put("fullScore", Num.of(es.getFullScore()));
+            row.put("level", scoreLevelService.levelOf(sc != null ? sc.getScore() : null, es.getFullScore()));
+            rows.add(row);
+        }
+        m.put("examName", exam.getName() == null ? "" : exam.getName());
+        m.put("subjects", rows);
+        return m;
     }
 
     // ───────────────── school / student ─────────────────
