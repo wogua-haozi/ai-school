@@ -47,6 +47,7 @@ public class AuthService {
     private final StudentMapper studentMapper;
     private final ParentBindingMapper parentBindingMapper;
     private final PermissionService permissionService;
+    private final com.aischool.server.service.repair.RepairService repairService;
 
     /** 家长自助注册（批8.6；批57① 增班级码）：凭「学号+邀请码(+孩子姓名)」绑定孩子。
      *  班级码=全班共用不消费，须学号在该班且姓名匹配；学生级码（转学生单发）=一码一学生，注册消费。
@@ -193,6 +194,7 @@ public class AuthService {
         u.put("role", user.getRole());
         u.put("mustChangePassword", mustChangePwd);
         u.put("perms", permissionService.permsOf(user.getId())); // 批49：权限点随登录下发，前端门控用
+        u.put("repairRole", repairService.repairRoleOf(user.getId(), user.getRole())); // 批63b 白名单报修身份
         m.put("user", u);
         return m;
     }

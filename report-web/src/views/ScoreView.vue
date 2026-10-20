@@ -41,6 +41,9 @@
             <span v-else>{{ row.score ?? '—' }}</span>
           </template>
         </el-table-column>
+        <el-table-column label="等级" min-width="80" align="center">
+          <template #default="{ row }">{{ row.level ?? '—' }}</template>
+        </el-table-column>
         <!-- 批63：排名列只对管理面角色显示（服务端已置 null，此处仅显示层） -->
         <el-table-column v-if="auth.canSeeRank" label="班级名次" min-width="100" align="center">
           <template #default="{ row }">{{ row.classRank ?? '—' }}</template>
@@ -148,7 +151,7 @@ import { useAuthStore } from '../stores/auth'
 const route = useRoute()
 const auth = useAuthStore()
 /* 批63 口径：管理员/书记=可传可改，级长=绑定年级可传可改且受录入窗口约束，
-   班主任/科任=只读（无排名列/无汇总/无导出，服务端已置 null），editable/canSeeRank 由后端下发 */
+   班主任/科任=只读（无排名列/无汇总/无导出，服务端已置 null；分数+等级可见），editable/canSeeRank 由后端下发 */
 
 /** 批40e 撤回：删除整场考试（管理员；含全部成绩，报告重新生成即对齐） */
 async function delExam() {

@@ -32,6 +32,8 @@ import java.util.stream.Collectors;
  * 提交 PENDING → 后勤中心（LOGISTICS）任一人审批 → APPROVED（全部维修工 REPAIRER 可见，任一人抢单 CLAIMED，
  * 条件更新防双抢）→ 接单人完成 DONE → 通知报修人+抄送 repair_cc_uids；拒绝 REJECTED；报修人 PENDING/APPROVED 可撤回。
  * 管理端 handle 兜底：非终态可直办（三层流转未走通时）。
+ * 批63b 授权=角色 OR uid 白名单（t_sys_config repair_logistics_uids/repairer_uids，逗号分隔）：
+ * 9 位报修人员均沿用手机号教职工号（教师/主任角色不动），repairRoleOf 供登录响应下发 repairRole。
  */
 @Service
 @RequiredArgsConstructor
@@ -93,14 +95,14 @@ public class RepairService {
         r.setPhotos(objects.isEmpty() ? null : toJson(objects));
         r.setStatus(Repair.PENDING);
         repairMapper.insert(r);
-        notificationService.repairTodo("LOGISTICS", "待审批：报修单",
+        notificationService.repairTodo("LOGISTICS", cfgUids("repair_logistics_uids"), "待审批：报修单",
                 realName(user.userId()) + " 提交的「" + r.getLocation() + "」报修单等待您审批（单号 #" + r.getId() + "）");
         return Map.of("repairId", r.getId());
     }
 
     /** 批63 后勤审批：PENDING → APPROVED（通知全部维修工抢单）/ REJECTED（通知报修人） */
     public void approve(Long id, UserPrincipal user, boolean approved, String note) {
-        if (!"LOGISTICS".equals(user.role())) {
+        if (!isLogistics(user)) {
             throw new BizException(403, "仅后勤中心可审批报修单");
         }
         Repair r = require(id);
@@ -116,7 +118,7 @@ public class RepairService {
         r.setApproveNote(note);
         repairMapper.updateById(r);
         if (approved) {
-            notificationService.repairTodo("REPAIRER", "待接单：报修单",
+            notificationService.repairTodo("REPAIRER", cfgUids("repairer_uids"), "待接单：报修单",
                     "「" + r.getLocation() + "」报修单已审批通过，等待接单（单号 #" + r.getId() + "）");
         } else {
             notificationService.repairResult(r.getReporterId(), "报修单未通过审批",
@@ -127,7 +129,7 @@ public class RepairService {
 
     /** 批63 维修工接单（抢单）：条件更新 WHERE status=APPROVED 防双抢，0 行=已被他人接走 */
     public void claim(Long id, UserPrincipal user) {
-        if (!"REPAIRER".equals(user.role())) {
+        if (!isRepairer(user)) {
             throw new BizException(403, "仅维修工可接单");
         }
         Repair r = require(id);
@@ -173,13 +175,13 @@ public class RepairService {
         }
     }
 
-    /** 批63 工作台（按角色分流）：LOGISTICS=待审批；REPAIRER=待接单抢单池+我的维修中 */
+    /** 批63 工作台（按授权分流，角色 OR 白名单）：LOGISTICS=待审批；REPAIRER=待接单抢单池+我的维修中 */
     public Map<String, Object> workbench(UserPrincipal user) {
         Map<String, Object> data = new LinkedHashMap<>();
-        if ("LOGISTICS".equals(user.role())) {
+        if (isLogistics(user)) {
             data.put("todo", toRows(repairMapper.selectList(new LambdaQueryWrapper<Repair>()
                     .eq(Repair::getStatus, Repair.PENDING).orderByAsc(Repair::getId))));
-        } else if ("REPAIRER".equals(user.role())) {
+        } else if (isRepairer(user)) {
             data.put("open", toRows(repairMapper.selectList(new LambdaQueryWrapper<Repair>()
                     .eq(Repair::getStatus, Repair.APPROVED).orderByAsc(Repair::getId))));
             data.put("mine", toRows(repairMapper.selectList(new LambdaQueryWrapper<Repair>()
@@ -275,8 +277,7 @@ public class RepairService {
     }
 
     private void checkVisible(Repair r, UserPrincipal user) {
-        String role = user.role();
-        if ("ADMIN".equals(role) || "LOGISTICS".equals(role) || "REPAIRER".equals(role)
+        if ("ADMIN".equals(user.role()) || isLogistics(user) || isRepairer(user)
                 || r.getReporterId().equals(user.userId())) { // 批63 放行后勤/维修工（审批与接单要看详情+照片）
             return;
         }
@@ -330,7 +331,12 @@ public class RepairService {
 
     /** 批63 抄送名单：t_sys_config repair_cc_uids（逗号分隔用户 id；生产填 4 后勤+冯荣森+杜伟滨） */
     private List<Long> ccUids() {
-        SysConfig c = sysConfigMapper.selectById("repair_cc_uids");
+        return cfgUids("repair_cc_uids");
+    }
+
+    /** 批63b uid 白名单读取（逗号分隔用户 id，脏段忽略） */
+    private List<Long> cfgUids(String key) {
+        SysConfig c = sysConfigMapper.selectById(key);
         if (c == null || c.getCfgValue() == null || c.getCfgValue().isBlank()) {
             return List.of();
         }
@@ -342,6 +348,26 @@ public class RepairService {
             }
         }
         return ids;
+    }
+
+    /** 批63b 报修授权：角色 OR uid 白名单（9 人沿用手机号教职工号，原角色不动） */
+    private boolean isLogistics(UserPrincipal user) {
+        return "LOGISTICS".equals(user.role()) || cfgUids("repair_logistics_uids").contains(user.userId());
+    }
+
+    private boolean isRepairer(UserPrincipal user) {
+        return "REPAIRER".equals(user.role()) || cfgUids("repairer_uids").contains(user.userId());
+    }
+
+    /** 批63b 登录响应下发的报修身份（前端工作台入口用）：LOGISTICS / REPAIRER / null */
+    public String repairRoleOf(Long userId, String role) {
+        if ("LOGISTICS".equals(role) || cfgUids("repair_logistics_uids").contains(userId)) {
+            return "LOGISTICS";
+        }
+        if ("REPAIRER".equals(role) || cfgUids("repairer_uids").contains(userId)) {
+            return "REPAIRER";
+        }
+        return null;
     }
 
     private Map<Long, String> userNames(List<Long> ids) {

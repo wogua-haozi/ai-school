@@ -97,7 +97,7 @@ async function doLogin() {
         password: form.password.trim(),
       },
     })
-    auth.set(data.token, data.user.realName, data.user.role, !!data.user.mustChangePassword, data.user.perms ?? [])
+    auth.set(data.token, data.user.realName, data.user.role, !!data.user.mustChangePassword, data.user.perms ?? [], data.user.repairRole ?? '')
     // 管理员设密/重置/批量导入的账号：首登强制先改密
     router.push(data.user.mustChangePassword ? '/change-password' : '/')
   } catch (e) {

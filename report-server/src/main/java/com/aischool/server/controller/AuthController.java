@@ -20,6 +20,7 @@ public class AuthController {
 
     private final AuthService authService;
     private final com.aischool.server.mapper.UserMapper userMapper;
+    private final com.aischool.server.service.repair.RepairService repairService;
 
     @Data
     public static class LoginReq {
@@ -104,7 +105,9 @@ public class AuthController {
                 "id", user.userId(), "username", user.username(),
                 "realName", user.realName(), "role", user.role(),
                 "phone", u == null || u.getPhone() == null ? "" : u.getPhone(),
-                "mustChangePassword", user.mustChangePwd()));
+                "mustChangePassword", user.mustChangePwd(),
+                "repairRole", repairService.repairRoleOf(user.userId(), user.role()) == null ? ""
+                        : repairService.repairRoleOf(user.userId(), user.role()))); // 批63b 白名单报修身份
     }
 
     @Data

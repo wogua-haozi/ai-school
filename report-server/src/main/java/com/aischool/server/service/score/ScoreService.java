@@ -47,7 +47,7 @@ import java.util.stream.Collectors;
  * 查看=ADMIN/书记（全校）+级长（绑定年级）+校级领导（分管学段，只读）+SCORE_ALL 权限点（全校，只读）
  * +班主任/科任（挂名班/任课班，只读，批63）。
  * 批63 排名只对管理面可见（canSeeRank）：班主任/科任只读入口名次一律服务端置 null，
- * 家长线走 /api/parent/* 白名单天然无 rank；汇总/导出含名次，非管理面 403。
+ * 等级 level 随行下发（与家长端同口径现算）；家长线走 /api/parent/* 白名单天然无 rank；汇总/导出含名次，非管理面 403。
  * 批63 增：考试科目/满分可改（updateExam）；listScores subjectId 空=总分模式（内存现算排名）；
  * 模板/导入按考试设定科目多列（ExcelScoreHelper 单班多科一表）。
  * t_exam.entry_open 仅约束级长录入；查看不受窗口影响。
@@ -68,6 +68,7 @@ public class ScoreService {
     private final DataScopeService dataScope;
     private final PermissionService permissionService;
     private final ExcelScoreHelper excel;
+    private final ScoreLevelService scoreLevel;
 
     // ───────────────── 考试 ─────────────────
 
@@ -225,7 +226,7 @@ public class ScoreService {
                 }).toList();
     }
 
-    /** 成绩单（名册 + 分数；缺分为 null）。批63：classId 单班 / gradeId 年级跨班合并（带 classId/className）；
+    /** 成绩单（名册 + 分数 + 等级；缺分为 null/等级随分为 null）。批63：classId 单班 / gradeId 年级跨班合并（带 classId/className）；
      *  subjectId 空=总分模式（各科得分之和，不可录入，排名内存现算同分同名次）。
      *  排名仅管理面可见（canSeeRank）：班主任/科任只读入口 classRank/gradeRank 服务端一律置 null */
     public Map<String, Object> listScores(UserPrincipal user, Long examId, Long subjectId, Long classId, Long gradeId) {
@@ -284,13 +285,15 @@ public class ScoreService {
         List<Map<String, Object>> rows = new ArrayList<>();
         for (Student st : roster) {
             Score sc = scores != null ? scores.get(st.getId()) : null;
+            BigDecimal rowScore = totalMode ? totals.get(st.getId()) : sc != null ? sc.getScore() : null;
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("studentId", st.getId());
             m.put("studentNo", st.getStudentNo());
             m.put("name", st.getName());
             m.put("classId", st.getClassId());
             m.put("className", classNames.getOrDefault(st.getClassId(), "—"));
-            m.put("score", totalMode ? totals.get(st.getId()) : sc != null ? sc.getScore() : null);
+            m.put("score", rowScore);
+            m.put("level", scoreLevel.levelOf(rowScore, fullScore));
             m.put("classRank", !rankVisible ? null
                     : totalMode ? classRankOf.get(st.getId()) : sc != null ? sc.getClassRank() : null);
             m.put("gradeRank", !rankVisible ? null

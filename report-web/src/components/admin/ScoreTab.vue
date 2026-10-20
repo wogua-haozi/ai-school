@@ -30,6 +30,9 @@
           <span v-else>{{ row.score ?? '—' }}</span>
         </template>
       </el-table-column>
+      <el-table-column label="等级" min-width="80" align="center">
+        <template #default="{ row }">{{ row.level ?? '—' }}</template>
+      </el-table-column>
       <el-table-column label="班级名次" min-width="100" align="center">
         <template #default="{ row }">{{ row.classRank ?? '—' }}</template>
       </el-table-column>

@@ -155,9 +155,18 @@ public class NotificationService {
 
     // ────────────────────────── 报修三层流转（批63） ──────────────────────────
 
-    /** 报修待办：提交→通知后勤中心（LOGISTICS）审批；审批通过→通知维修工（REPAIRER）抢单（按角色广播） */
-    public void repairTodo(String role, String title, String content) {
+    /** 报修待办：提交→通知后勤中心（LOGISTICS）审批；审批通过→通知维修工（REPAIRER）抢单。
+     *  批63b 角色广播 + uid 白名单补发（白名单人员是教师/主任角色，收不到角色广播）；已是该角色者不重复。 */
+    public void repairTodo(String role, List<Long> extraUids, String title, String content) {
+        List<Long> roleUids = userMapper.selectList(new LambdaQueryWrapper<User>()
+                        .in(User::getRole, List.of(role)).eq(User::getStatus, 1))
+                .stream().map(User::getId).toList();
         sendToRoles(List.of(role), Notification.REPAIR_TODO, title, content, "/repair");
+        for (Long uid : extraUids) {
+            if (uid != null && !roleUids.contains(uid)) {
+                send(uid, Notification.REPAIR_TODO, title, content, "/repair");
+            }
+        }
     }
 
     /** 报修结果（批63）：拒绝/接单/完成→报修人；完成抄送 repair_cc_uids 名单 */

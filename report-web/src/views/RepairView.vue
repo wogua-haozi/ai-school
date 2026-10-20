@@ -1,7 +1,7 @@
 <template>
   <div class="app-page repair">
     <!-- 批63 工作台：后勤=审批；维修工=抢单+完成（普通教师只见下方发起与我的报修） -->
-    <template v-if="auth.role === 'LOGISTICS'">
+    <template v-if="auth.repairRole === 'LOGISTICS'">
       <div class="app-sec">待审批 · {{ wb.todo?.length ?? 0 }}</div>
       <div class="app-card list">
         <div v-if="!wb.todo?.length" class="empty">暂无待审批报修</div>
@@ -18,7 +18,7 @@
         </div>
       </div>
     </template>
-    <template v-else-if="auth.role === 'REPAIRER'">
+    <template v-else-if="auth.repairRole === 'REPAIRER'">
       <div class="app-sec">待接单 · {{ wb.open?.length ?? 0 }}</div>
       <div class="app-card list">
         <div v-if="!wb.open?.length" class="empty">暂无可接的报修单</div>
@@ -178,7 +178,7 @@ const acting = ref(false)
 
 async function load() {
   rows.value = await api<RepairRow[]>('/api/repair/my')
-  if (auth.role === 'LOGISTICS' || auth.role === 'REPAIRER') {
+  if (auth.repairRole === 'LOGISTICS' || auth.repairRole === 'REPAIRER') {
     wb.value = await api('/api/repair/workbench').catch(() => ({}))
   }
 }

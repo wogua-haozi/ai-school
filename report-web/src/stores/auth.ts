@@ -5,6 +5,8 @@ export const useAuthStore = defineStore('auth', {
     token: localStorage.getItem('token') || '',
     realName: localStorage.getItem('realName') || '',
     role: localStorage.getItem('role') || '',
+    // 批63b 报修身份（角色或 uid 白名单，登录接口下发）：后勤审批/维修工接单的工作台入口
+    repairRole: localStorage.getItem('repairRole') || '',
     mustChangePwd: localStorage.getItem('mustChangePwd') === '1',
     // 批49：权限点随登录下发（SCORE_ALL 全校成绩查看等；ADMIN 天生全权不落表）
     perms: JSON.parse(localStorage.getItem('perms') || '[]') as string[],
@@ -26,15 +28,17 @@ export const useAuthStore = defineStore('auth', {
     },
   },
   actions: {
-    set(token: string, realName: string, role: string, mustChangePwd = false, perms: string[] = []) {
+    set(token: string, realName: string, role: string, mustChangePwd = false, perms: string[] = [], repairRole = '') {
       this.token = token
       this.realName = realName
       this.role = role
       this.mustChangePwd = mustChangePwd
       this.perms = perms
+      this.repairRole = repairRole
       localStorage.setItem('token', token)
       localStorage.setItem('realName', realName)
       localStorage.setItem('role', role)
+      localStorage.setItem('repairRole', repairRole)
       localStorage.setItem('perms', JSON.stringify(perms))
       if (mustChangePwd) localStorage.setItem('mustChangePwd', '1')
       else localStorage.removeItem('mustChangePwd')
@@ -52,11 +56,13 @@ export const useAuthStore = defineStore('auth', {
       this.token = ''
       this.realName = ''
       this.role = ''
+      this.repairRole = ''
       this.mustChangePwd = false
       this.perms = []
       localStorage.removeItem('token')
       localStorage.removeItem('realName')
       localStorage.removeItem('role')
+      localStorage.removeItem('repairRole')
       localStorage.removeItem('mustChangePwd')
       localStorage.removeItem('perms')
     },
