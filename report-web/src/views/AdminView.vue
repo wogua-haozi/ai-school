@@ -141,6 +141,7 @@ import RepairTab from '../components/admin/RepairTab.vue'
 import VenueTab from '../components/admin/VenueTab.vue'
 import TalkTab from '../components/admin/TalkTab.vue'
 import FootprintTab from '../components/admin/FootprintTab.vue'
+import UsageTab from '../components/admin/UsageTab.vue'
 import SchoolYearTab from '../components/admin/SchoolYearTab.vue'
 import ArchiveTab from '../components/admin/ArchiveTab.vue'
 import NotifyTab from '../components/admin/NotifyTab.vue'
@@ -166,6 +167,7 @@ const onMq = (e: MediaQueryListEvent) => { desktop.value = e.matches }
 /* 侧栏导航：12 个页签分四组；comp=markRaw 防组件被响应式代理 */
 const TABS: Record<string, { label: string; comp: any; icon: any }> = {
   teacher: { label: '教师与任课', comp: markRaw(TeacherTab), icon: User },
+  usage: { label: '教师使用情况', comp: markRaw(UsageTab), icon: DataLine },
   parent: { label: '家长账号', comp: markRaw(ParentTab), icon: Iphone },
   roleRequest: { label: '账号审批', comp: markRaw(RoleRequestTab), icon: Stamp },
   feedback: { label: '意见反馈', comp: markRaw(FeedbackTab), icon: ChatDotRound },
@@ -200,7 +202,7 @@ const TABS: Record<string, { label: string; comp: any; icon: any }> = {
 /* 批37 IA 重组：30 页签按职能分 7 组（桌面侧栏=7 段；App 窄屏=两级「分组落地→组内页签」）；
    原「基础数据/系统运维」两个杂物间拆散归位：物资/场地/归档→总务后勤，谈心/足迹→德育激励等 */
 const groups = [
-  { key: 'people', label: '人员账号', icon: User, items: ['teacher', 'parent', 'roleRequest', 'teacherProfile'] },
+  { key: 'people', label: '人员账号', icon: User, items: ['teacher', 'usage', 'parent', 'roleRequest', 'teacherProfile'] },
   { key: 'edu', label: '教学教务', icon: School, items: ['org', 'student', 'term', 'schoolYear', 'exam', 'score', 'duty', 'template'] },
   { key: 'moral', label: '德育激励', icon: Medal, items: ['civility', 'indicator', 'shop', 'talk', 'footprint'] },
   { key: 'logi', label: '总务后勤', icon: OfficeBuilding, items: ['goods', 'repair', 'venue', 'archive'] },

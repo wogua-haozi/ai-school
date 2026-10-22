@@ -182,8 +182,9 @@ public class NotificationService {
         wecomService.pushApprovals(self
                 ? "【教师注册】" + targetName + " 提交了注册申请，等待审批"
                 : "【待审批】" + requesterName + " 申请：" + targetName + "（" + targetRoleName + "）");
+        // 批64 审批人=管理员+领导层（书记/领导/主任）
         userMapper.selectList(new LambdaQueryWrapper<User>()
-                        .in(User::getRole, "ADMIN", "LEADER").eq(User::getStatus, 1))
+                        .in(User::getRole, "ADMIN", "LEADER", "SECRETARY", "DIRECTOR").eq(User::getStatus, 1))
                 .forEach(u -> send(u.getId(), Notification.REGISTER_TODO,
                         "待审批：" + targetRoleName + "账号", detail,
                         "ADMIN".equals(u.getRole()) ? "/admin?tab=roleRequest" : "/l/approvals"));

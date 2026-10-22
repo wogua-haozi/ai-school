@@ -133,8 +133,8 @@ router.beforeEach((to) => {
   if (role !== 'PARENT' && !free && to.path.startsWith('/p/')) return '/'
   if (role === 'GUARD' && !free && !to.path.startsWith('/g/')) return '/g/home'
   if (role !== 'GUARD' && !free && to.path.startsWith('/g/')) return '/'
-  // 批49 开放汇总入口；批63 收口为排名可见角色（管理员/书记/级长/SCORE_ALL——班主任/科任只见分数无汇总）
-  if (role !== 'LEADER' && to.path.startsWith('/l/')
+  // 批49 开放汇总入口；批63 收口为排名可见角色；批64 领导层（书记/领导/主任）全量进驾驶舱
+  if (!['LEADER', 'SECRETARY', 'DIRECTOR'].includes(role) && to.path.startsWith('/l/')
     && !(to.path === '/l/scores' && auth.canSeeRank)) return '/'
 })
 

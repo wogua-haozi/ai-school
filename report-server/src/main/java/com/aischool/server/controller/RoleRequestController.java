@@ -29,9 +29,11 @@ public class RoleRequestController {
     private final RoleApprovalService approvalService;
 
     private void checkApprover() {
+        // 批64 领导层（书记/领导/主任）均可审批
         String role = AuthUtil.current().role();
-        if (!"ADMIN".equals(role) && !"LEADER".equals(role)) {
-            throw new BizException(403, "仅管理员或领导可审批");
+        if (!"ADMIN".equals(role) && !"LEADER".equals(role) && !"SECRETARY".equals(role)
+                && !"DIRECTOR".equals(role)) {
+            throw new BizException(403, "仅管理员或领导层（书记/领导/主任）可审批");
         }
     }
 

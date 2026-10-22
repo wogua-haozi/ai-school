@@ -66,7 +66,8 @@ const ranges = [
 // 批52③ 37 槽轮换池：本页基准 1（无静态位，轮换从基准起）
 const tex = (i: number) => texAt(1 + i)
 function roleLabel(r: string) {
-  return ({ ADMIN: '管理员', LEADER: '领导', HEAD_TEACHER: '班主任', TEACHER: '任课教师' } as Record<string, string>)[r] ?? r
+  return ({ ADMIN: '管理员', SECRETARY: '书记', LEADER: '领导', DIRECTOR: '主任', GRADE_LEADER: '级长',
+    HEAD_TEACHER: '班主任', TEACHER: '任课教师' } as Record<string, string>)[r] ?? r
 }
 function fmtTime(t: string) {
   return t.slice(0, 16).replace('T', ' ')

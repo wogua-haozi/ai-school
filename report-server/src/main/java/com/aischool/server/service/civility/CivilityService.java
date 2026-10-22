@@ -155,7 +155,8 @@ public class CivilityService {
     private void checkClassScoreAllowed() {
         var user = AuthUtil.current();
         String role = user.role();
-        if ("ADMIN".equals(role) || "LEADER".equals(role) || "DORM".equals(role)) {
+        // 批64 书记与领导平权（免排班可记分）；主任/级长仍走值日排班口径
+        if ("ADMIN".equals(role) || "LEADER".equals(role) || "SECRETARY".equals(role) || "DORM".equals(role)) {
             return;
         }
         if (dutyService.isOnDuty(user.userId(), LocalDate.now())) {

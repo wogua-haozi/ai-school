@@ -77,7 +77,8 @@ public class WeeklyReportService {
             md.append("> 共 ").append(total).append(" 项待完善，详见管理端「数据体检」页签");
         }
         wecomService.sendMarkdown(md.toString());
-        notificationService.sendToRoles(List.of("ADMIN", "LEADER"), Notification.SYSTEM,
+        // 批64 书记与领导平权接收
+        notificationService.sendToRoles(List.of("ADMIN", "LEADER", "SECRETARY"), Notification.SYSTEM,
                 "数据体检周报", brief.toString(), "/admin?tab=health");
         return md.toString();
     }

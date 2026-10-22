@@ -200,22 +200,23 @@ public class RoleApprovalService {
         return r;
     }
 
-    /** 审批人资格：ADMIN/LEADER（或 ADMIN_ACCESS）；发起人不能自批，除非全校仅剩发起人一个可用审批人（防死锁） */
+    /** 审批人资格：ADMIN/领导层（书记/领导/主任，批64）或 ADMIN_ACCESS；发起人不能自批，除非全校仅剩发起人一个可用审批人（防死锁） */
     private void checkApprover(RoleRequest r, Long approverId) {
         String role = AuthUtil.current().role();
-        if (!"ADMIN".equals(role) && !"LEADER".equals(role) && !permissionService.hasAdminAccess(AuthUtil.current())) {
-            throw new BizException(403, "仅管理员或领导可审批");
+        if (!"ADMIN".equals(role) && !"LEADER".equals(role) && !"SECRETARY".equals(role)
+                && !"DIRECTOR".equals(role) && !permissionService.hasAdminAccess(AuthUtil.current())) {
+            throw new BizException(403, "仅管理员或领导层（书记/领导/主任）可审批");
         }
         if (r.getRequestedBy().equals(approverId) && countOtherApprovers(approverId) > 0) {
-            throw new BizException(403, "发起人不能自批，请由另一名管理员/领导审批");
+            throw new BizException(403, "发起人不能自批，请由另一名管理员/领导层审批");
         }
         // 例外：发起人=全校唯一可用审批人时放行自批（防死锁），由 countOtherApprovers==0 兜底
     }
 
-    /** 除指定人外的可用审批人数：启用中的 ADMIN/LEADER（任何领导都是合法审批人，ADMIN_ACCESS 无需单列） */
+    /** 除指定人外的可用审批人数：启用中的 ADMIN/领导层（批64：书记/领导/主任都是合法审批人，ADMIN_ACCESS 无需单列） */
     private long countOtherApprovers(Long excludeUserId) {
         return userMapper.selectCount(new LambdaQueryWrapper<User>()
-                .in(User::getRole, "ADMIN", "LEADER")
+                .in(User::getRole, "ADMIN", "LEADER", "SECRETARY", "DIRECTOR")
                 .eq(User::getStatus, 1)
                 .ne(User::getId, excludeUserId));
     }

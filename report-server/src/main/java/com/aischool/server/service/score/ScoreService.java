@@ -716,20 +716,21 @@ public class ScoreService {
     private void requireScoreAccess(UserPrincipal user) {
         String role = user.role();
         if ("ADMIN".equals(role) || "SECRETARY".equals(role) || "LEADER".equals(role)
-                || "GRADE_LEADER".equals(role)
-                || "HEAD_TEACHER".equals(role) || "TEACHER".equals(role)) { // 批63 班主任/科任只读入口
+                || "DIRECTOR".equals(role) || "GRADE_LEADER".equals(role)
+                || "HEAD_TEACHER".equals(role) || "TEACHER".equals(role)) { // 批63 班主任/科任只读入口；批64 主任（领导层）只读
             return;
         }
         if (permissionService.hasScoreAll(user)) {
             return;
         }
-        throw new BizException(403, "成绩功能仅限管理员、书记、级长、校级领导、班主任与科任教师使用");
+        throw new BizException(403, "成绩功能仅限管理员、书记、领导层（领导/主任）、级长、班主任与科任教师使用");
     }
 
-    /** 批63 排名可见门：管理面角色+SCORE_ALL 可见；班主任/科任只读入口与家长线一律无名次（服务端置 null 唯一口径） */
+    /** 批63 排名可见门：管理面角色+SCORE_ALL 可见；班主任/科任只读入口与家长线一律无名次（服务端置 null 唯一口径）；批64 主任（领导层）可见 */
     private boolean canSeeRank(UserPrincipal user) {
         String role = user.role();
         return "ADMIN".equals(role) || "SECRETARY".equals(role) || "LEADER".equals(role)
+                || "DIRECTOR".equals(role)
                 || "GRADE_LEADER".equals(role) || permissionService.hasScoreAll(user);
     }
 

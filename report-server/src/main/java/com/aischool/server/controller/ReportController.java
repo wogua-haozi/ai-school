@@ -250,7 +250,8 @@ public class ReportController {
     }
 
     private void checkTaskReadable(com.aischool.server.security.UserPrincipal user, ReportTask task) {
-        if ("ADMIN".equals(user.role()) || "LEADER".equals(user.role())) {
+        // 批64 书记与领导平权（读全量报告任务）
+        if ("ADMIN".equals(user.role()) || "LEADER".equals(user.role()) || "SECRETARY".equals(user.role())) {
             return;
         }
         if ("单生".equals(task.getScope())) {

@@ -66,9 +66,11 @@ public class LeaderController {
     private final DataScopeService dataScope;
     private final TeachMapper teachMapper;
 
+    /** 批64 领导层=书记/领导/主任（级长不在此列）：驾驶舱（概览/使用情况/成绩汇总/待审批）对领导层开放 */
     private void checkLeader() {
-        if (!"LEADER".equals(AuthUtil.current().role())) {
-            throw new BizException(403, "仅领导账号可访问");
+        String role = AuthUtil.current().role();
+        if (!"LEADER".equals(role) && !"SECRETARY".equals(role) && !"DIRECTOR".equals(role)) {
+            throw new BizException(403, "仅领导层（书记/领导/主任）可访问");
         }
     }
 
@@ -129,7 +131,12 @@ public class LeaderController {
      */
     @GetMapping("/teacher-usage")
     public ApiResponse<Map<String, Object>> teacherUsage(@RequestParam(defaultValue = "30") int days) {
-        checkLeader();
+        // 批64：领导层 + 管理员（管理端「教师使用情况」页签同源此接口）
+        String role = AuthUtil.current().role();
+        if (!"LEADER".equals(role) && !"SECRETARY".equals(role) && !"DIRECTOR".equals(role)
+                && !"ADMIN".equals(role)) {
+            throw new BizException(403, "仅领导层或管理员可访问");
+        }
         LocalDateTime since = LocalDateTime.now().minusDays(Math.min(Math.max(days, 1), 365));
         List<User> teachers = userMapper.selectList(new LambdaQueryWrapper<User>()
                 .in(User::getRole, "ADMIN", "LEADER", "HEAD_TEACHER", "TEACHER")

@@ -12,18 +12,18 @@ export const useAuthStore = defineStore('auth', {
     perms: JSON.parse(localStorage.getItem('perms') || '[]') as string[],
   }),
   getters: {
-    /** 批63 成绩可见门（与后端 requireScoreAccess 同口径）：管理员/书记/校级领导/级长 + 班主任/科任（只读），或被授全校成绩查看权 */
+    /** 批63 成绩可见门（与后端 requireScoreAccess 同口径）：管理员/书记/领导层（领导/主任）/级长 + 班主任/科任（只读），或被授全校成绩查看权 */
     scoreAccess(): boolean {
-      return ['ADMIN', 'SECRETARY', 'LEADER', 'GRADE_LEADER', 'HEAD_TEACHER', 'TEACHER'].includes(this.role)
+      return ['ADMIN', 'SECRETARY', 'LEADER', 'DIRECTOR', 'GRADE_LEADER', 'HEAD_TEACHER', 'TEACHER'].includes(this.role)
         || this.perms.includes('SCORE_ALL')
     },
     /** 批49 成绩可传可改门（与后端 requireScoreUpload 同口径）：管理员/书记/级长 */
     scoreUpload(): boolean {
       return ['ADMIN', 'SECRETARY', 'GRADE_LEADER'].includes(this.role)
     },
-    /** 批63 排名可见门（与后端 canSeeRank 同口径）：管理面角色/SCORE_ALL；班主任/科任只见分数 */
+    /** 批63 排名可见门（与后端 canSeeRank 同口径）：管理面角色/SCORE_ALL；班主任/科任只见分数；批64 主任（领导层）可见 */
     canSeeRank(): boolean {
-      return ['ADMIN', 'SECRETARY', 'LEADER', 'GRADE_LEADER'].includes(this.role)
+      return ['ADMIN', 'SECRETARY', 'LEADER', 'DIRECTOR', 'GRADE_LEADER'].includes(this.role)
         || this.perms.includes('SCORE_ALL')
     },
   },

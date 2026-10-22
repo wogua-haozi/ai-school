@@ -148,7 +148,7 @@ const sections = computed(() => {
     ] },
     { label: '我的成长', items: [
       { name: '我的成长', icon: 'award-o', to: '/my-growth', bg: '#0F766E' },
-      ...(auth.role === 'LEADER' ? [{ name: '领导驾驶舱', icon: 'chart-trending-o', to: '/l/home', bg: '#1F2A44' }] : []),
+      ...(['LEADER', 'SECRETARY', 'DIRECTOR'].includes(auth.role) ? [{ name: '领导驾驶舱', icon: 'chart-trending-o', to: '/l/home', bg: '#1F2A44' }] : []),
     ] },
     /* 批37 追加：管理员直达分区——校方自助上传的内容发布/素材库一步可达
        （?tab= 直达且自动展开所属分组）；系统管理从「校园事务」挪入 */

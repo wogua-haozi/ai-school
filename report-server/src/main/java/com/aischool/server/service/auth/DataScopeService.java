@@ -99,7 +99,7 @@ public class DataScopeService {
         if ("ADMIN".equals(user.role())) {
             return;
         }
-        if ("LEADER".equals(user.role())) {
+        if ("LEADER".equals(user.role()) || "SECRETARY".equals(user.role())) { // 批64 书记与领导平权（书记无学段配置=全校）
             String scope = stageScopeOf(user);
             if (scope == null || stageMatch(scope, classId)) { // 批41 学段门（与成绩线同口径）
                 return;
