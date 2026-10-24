@@ -108,4 +108,15 @@ public class AdminFeedbackController {
                 .set(Feedback::getHandlerId, req.getStatus() == 1 ? AuthUtil.current().userId() : null));
         return ApiResponse.ok();
     }
+
+    /** 删除反馈（批67 补口：管理员兜底，任意状态可删） */
+    @DeleteMapping("/{id}")
+    public ApiResponse<Void> remove(@PathVariable Long id) {
+        checkAdmin();
+        if (feedbackMapper.selectById(id) == null) {
+            throw new BizException(404, "反馈不存在");
+        }
+        feedbackMapper.deleteById(id);
+        return ApiResponse.ok();
+    }
 }

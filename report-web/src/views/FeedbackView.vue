@@ -20,6 +20,7 @@
         <div class="fb-head">
           <span class="tag" :class="f.status === 1 ? 'done' : 'wait'">{{ f.status === 1 ? '已处理' : '待处理' }}</span>
           <span class="time">{{ fmtTime(f.createTime) }}</span>
+          <span class="del" @click="withdraw(f)">撤回</span>
         </div>
         <p class="fb-content">{{ f.content }}</p>
         <p v-if="f.status === 1 && f.handleNote" class="fb-note">回复：{{ f.handleNote }}</p>
@@ -30,7 +31,7 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { showFailToast, showSuccessToast } from 'vant'
+import { showConfirmDialog, showFailToast, showSuccessToast } from 'vant'
 import { api } from '../api/http'
 
 const content = ref('')
@@ -64,6 +65,19 @@ function fmtTime(t?: string) {
   return t ? t.slice(0, 16).replace('T', ' ') : ''
 }
 
+async function withdraw(f: any) {
+  try {
+    await showConfirmDialog({ title: '撤回反馈', message: '撤回后不可恢复，确定撤回这条反馈吗？' })
+  } catch { return }
+  try {
+    await api(`/api/feedback/${f.id}`, { method: 'DELETE' })
+    showSuccessToast('已撤回')
+    await load()
+  } catch (e: any) {
+    showFailToast(e?.message || '撤回失败')
+  }
+}
+
 onMounted(load)
 </script>
 
@@ -77,6 +91,7 @@ onMounted(load)
 .fb { padding: 10px 0; border-bottom: 1px dashed var(--app-card-border); }
 .fb:last-child { border-bottom: none; }
 .fb-head { display: flex; align-items: center; gap: 8px; }
+.del { margin-left: auto; font-size: 12px; font-weight: 600; color: #DC2626; padding: 2px 6px; }
 .tag { padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
 .tag.wait { background: #FDF1E2; color: #B45309; }
 .tag.done { background: #E7F6EE; color: #059669; }

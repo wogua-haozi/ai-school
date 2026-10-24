@@ -77,4 +77,18 @@ public class FeedbackController {
             return m;
         }).toList());
     }
+
+    /** 撤回自己的反馈（批67 补口：限本人不限时，待处理/已处理均可，管理员兜底走管理端删除） */
+    @DeleteMapping("/api/feedback/{id}")
+    public ApiResponse<Void> withdraw(@PathVariable Long id) {
+        Feedback f = feedbackMapper.selectById(id);
+        if (f == null) {
+            throw new BizException(404, "反馈不存在");
+        }
+        if (!f.getUserId().equals(AuthUtil.current().userId())) {
+            throw new BizException(403, "只能撤回自己的反馈");
+        }
+        feedbackMapper.deleteById(id);
+        return ApiResponse.ok();
+    }
 }

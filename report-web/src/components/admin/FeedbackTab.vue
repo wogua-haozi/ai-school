@@ -32,9 +32,10 @@
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="100">
+      <el-table-column label="操作" width="140">
         <template #default="{ row }">
           <el-button link type="primary" @click="openHandle(row)">{{ row.status === 1 ? '查看' : '处理' }}</el-button>
+          <el-button link type="danger" @click="remove(row)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -64,7 +65,7 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '../../api/http'
 
 const emit = defineEmits<{ (e: 'handled'): void }>()
@@ -110,6 +111,14 @@ async function handle(status: number) {
   })
   ElMessage.success(status === 1 ? '已处理' : '已退回待处理')
   dlg.value = false
+  await load()
+  emit('handled')
+}
+
+async function remove(row: any) {
+  await ElMessageBox.confirm(`删除「${row.submitterName}」的这条反馈？不可恢复`, '删除反馈', { type: 'warning' })
+  await api(`/api/admin/feedback/${row.id}`, { method: 'DELETE' })
+  ElMessage.success('已删除')
   await load()
   emit('handled')
 }
