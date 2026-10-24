@@ -22,6 +22,11 @@
           <p class="names" @click="goStudent(m)">{{ studentNames(m) }}</p>
           <p class="meta">{{ fmtDate(m.createTime) }}<template v-if="m.teacherName"> · {{ m.teacherName }}</template></p>
           <p v-if="m.note" class="note">{{ m.note }}</p>
+          <!-- 批65：误操作自救——本人可删可改文字（不限时；信号差重复上传的场景） -->
+          <div v-if="isMine(m)" class="ops">
+            <button class="op" type="button" @click="openEdit(m)">编辑</button>
+            <button class="op danger" type="button" @click="del(m)">删除</button>
+          </div>
         </div>
       </div>
     </div>
@@ -34,6 +39,16 @@
 
     <van-popup v-model:show="clsOpen" position="bottom" round>
       <van-picker title="选择班级" :columns="clsColumns" @confirm="onCls" @cancel="clsOpen = false" />
+    </van-popup>
+
+    <!-- 批65：本人改备注 -->
+    <van-popup v-model:show="editOpen" position="bottom" round>
+      <div class="edit-box">
+        <p class="edit-tt">修改备注</p>
+        <van-field v-model="editNote" type="textarea" rows="3" maxlength="500" show-word-limit
+          placeholder="想对学生说的话（可留空）" />
+        <van-button round block type="primary" :loading="saving" @click="saveNote">保存</van-button>
+      </div>
     </van-popup>
     </van-pull-refresh>
 
@@ -48,6 +63,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { showConfirmDialog, showSuccessToast } from 'vant'
 import { api } from '../api/http'
 import MomentPhotos from '../components/MomentPhotos.vue'
 import PhotoPreview from '../components/PhotoPreview.vue'
@@ -58,7 +74,7 @@ const sceneTags = ref<string[]>([])
 interface Stu { id: number; name: string }
 interface MomentItem {
   id: number; photoUrl: string; photoUrls?: string[]; sceneTag: string; note: string
-  createTime?: string; teacherName?: string; students?: Stu[]
+  createTime?: string; teacherName?: string; teacherId?: number; students?: Stu[]
 }
 
 const route = useRoute()
@@ -126,7 +142,43 @@ function goCam() {
   router.push({ path: '/moment/new', query: { classId: String(classId.value ?? '') } })
 }
 
+/** 批65：误操作自救（本人判定用 /api/auth/me 的 id，比 teacherId） */
+const myId = ref<number>()
+function isMine(m: MomentItem) {
+  return m.teacherId != null && m.teacherId === myId.value
+}
+
+const editOpen = ref(false)
+const editNote = ref('')
+const editId = ref<number>()
+const saving = ref(false)
+function openEdit(m: MomentItem) {
+  editId.value = m.id
+  editNote.value = m.note || ''
+  editOpen.value = true
+}
+async function saveNote() {
+  saving.value = true
+  try {
+    await api(`/api/moment/${editId.value}`, { method: 'PUT', json: { note: editNote.value } })
+    editOpen.value = false
+    showSuccessToast('已修改')
+    await load()
+  } finally {
+    saving.value = false
+  }
+}
+async function del(m: MomentItem) {
+  try {
+    await showConfirmDialog({ title: '删除微光', message: '删除这条微光？照片与已发的扬长币将一并撤销，不可恢复。' })
+  } catch { return } // 取消删除
+  await api(`/api/moment/${m.id}`, { method: 'DELETE' })
+  showSuccessToast('已删除')
+  await load()
+}
+
 onMounted(async () => {
+  api<{ id: number }>('/api/auth/me').then((d) => { myId.value = d.id }).catch(() => { /* 拿不到则不显本人按钮 */ })
   api<{ id: number; name: string }[]>('/api/moment/tags')
     .then((ts) => { sceneTags.value = ts.map((t) => t.name) })
     .catch(() => { /* 标签加载失败不阻塞列表 */ })
@@ -162,6 +214,13 @@ onMounted(async () => {
 .meta { margin: 3px 0 0; font-size: 11px; color: var(--app-text-3); }
 .note { margin: 4px 0 0; font-size: 12px; line-height: 1.5; color: var(--app-text-2);
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ops { display: flex; gap: 8px; margin-top: 7px; }
+.op { flex: none; padding: 3px 13px; border: 1px solid var(--app-card-border); border-radius: 999px;
+  background: #fff; color: var(--app-text-3); font-size: 11px; cursor: pointer;
+  -webkit-tap-highlight-color: transparent; }
+.op.danger { border-color: #FCA5A5; color: #DC2626; }
+.edit-box { padding: 18px 16px calc(20px + var(--sab)); display: flex; flex-direction: column; gap: 12px; }
+.edit-tt { margin: 0; font-size: 15px; font-weight: 600; color: var(--app-text-1); text-align: center; }
 
 .empty-card { display: flex; flex-direction: column; align-items: center; gap: 6px;
   margin-top: 12px; padding-bottom: 18px; }

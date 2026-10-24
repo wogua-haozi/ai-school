@@ -24,6 +24,8 @@ public class Notification {
     public static final String REPAIR_RESULT = "REPAIR_RESULT";
     public static final String SYSTEM = "SYSTEM";
     public static final String ALERT = "ALERT";
+    /** 批66② 校园通知广播：发布即推可见老师，点直达 /notices/{id} */
+    public static final String NOTICE_BROADCAST = "NOTICE_BROADCAST";
 
     @TableId(type = IdType.AUTO)
     private Long id;

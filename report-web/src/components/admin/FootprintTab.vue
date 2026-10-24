@@ -32,13 +32,18 @@
       <el-table-column label="记录时间" width="140">
         <template #default="{ row }">{{ fmtTime(row.createTime) }}</template>
       </el-table-column>
+      <el-table-column label="操作" width="70">
+        <template #default="{ row }">
+          <el-button link type="danger" size="small" @click="remove(row)">删除</el-button>
+        </template>
+      </el-table-column>
     </el-table>
   </div>
 </template>
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, fetchBlob } from '../../api/http'
 import { saveFile } from '../../api/nativeShare'
 
@@ -71,6 +76,14 @@ async function exportPdf() {
   } catch (e: any) {
     ElMessage.error(e?.message || '导出失败')
   } finally { exporting.value = false }
+}
+
+/** 批67 B6：管理员删除足迹（复用教师端 DELETE /api/footprint/{id}，后端已放行 ADMIN） */
+async function remove(row: any) {
+  await ElMessageBox.confirm(`确定删除 ${row.teacherName} 的「${row.title}」足迹？删除后不可恢复。`, '删除足迹', { type: 'warning' })
+  await api(`/api/footprint/${row.id}`, { method: 'DELETE' })
+  ElMessage.success('已删除')
+  await Promise.all([load(), loadSummary()])
 }
 
 async function load() {

@@ -16,6 +16,7 @@ import com.aischool.server.service.auth.DataScopeService;
 import com.aischool.server.service.coin.CoinLedgerService;
 import com.aischool.server.service.report.PdfStoreService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -150,9 +151,12 @@ public class MomentService {
     /** 场景标签字典（批6 漏项H）：种子+教师自建，按 sort 排序 */
     public List<Map<String, Object>> listTags(UserPrincipal user) {
         rejectParent(user);
+        boolean admin = "ADMIN".equals(user.role());
         return momentTagMapper.selectList(new LambdaQueryWrapper<MomentTag>()
                         .orderByAsc(MomentTag::getSort).orderByAsc(MomentTag::getId))
-                .stream().map(t -> Map.<String, Object>of("id", t.getId(), "name", t.getName())).toList();
+                .stream().map(t -> Map.<String, Object>of("id", t.getId(), "name", t.getName(),
+                        // 批65：mine=本人自建（或管理员），采集页只对自建标签显示删除口
+                        "mine", admin || user.userId().equals(t.getCreateUserId()))).toList();
     }
 
     /** 教师自建标签（≤32 字，重名拒绝） */
@@ -244,6 +248,41 @@ public class MomentService {
                 coinLedger.reverse(sid, "微光", id);
             }
         }
+    }
+
+    /** 批65：改文字（仅记录教师本人或管理员，不限时——信号差重复上传等误操作次日发现也能改） */
+    public void updateNote(UserPrincipal user, Long id, String note) {
+        Moment m = momentMapper.selectById(id);
+        if (m == null) {
+            throw new BizException(404, "微光记录不存在");
+        }
+        if (!m.getTeacherId().equals(user.userId()) && !"ADMIN".equals(user.role())) {
+            throw new BizException(403, "仅记录教师本人或管理员可修改");
+        }
+        if (note != null && note.length() > 500) {
+            throw new BizException(400, "备注不能超过 500 字");
+        }
+        // updateById 会跳过 null 字段，清空备注须显式 set（同 ScoreService.writeRows 置空分数的写法）
+        momentMapper.update(null, new LambdaUpdateWrapper<Moment>()
+                .eq(Moment::getId, id)
+                .set(Moment::getNote, note == null || note.isBlank() ? null : note.trim()));
+    }
+
+    /** 批65：删除自建场景标签（建标签人本人或管理员；已被微光引用则拒绝） */
+    public void deleteTag(UserPrincipal user, Long id) {
+        MomentTag t = momentTagMapper.selectById(id);
+        if (t == null) {
+            throw new BizException(404, "标签不存在");
+        }
+        if (!t.getCreateUserId().equals(user.userId()) && !"ADMIN".equals(user.role())) {
+            throw new BizException(403, "仅建标签教师本人或管理员可删除");
+        }
+        Long used = momentMapper.selectCount(new LambdaQueryWrapper<Moment>()
+                .eq(Moment::getSceneTag, t.getName()));
+        if (used != null && used > 0) {
+            throw new BizException(400, "该标签已被 " + used + " 条微光使用，不可删除");
+        }
+        momentTagMapper.deleteById(id);
     }
 
     /** 批量组装视图：students[{id,name}] + teacherName + 可直接访问的 photoUrl */

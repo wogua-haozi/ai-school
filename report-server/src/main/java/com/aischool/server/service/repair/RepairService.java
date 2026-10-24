@@ -265,6 +265,18 @@ public class RepairService {
         repairMapper.updateById(r);
     }
 
+    /** 批67 B4：管理员删除已撤回的报修单（撤回时照片已清，此处兜底再删防漏；在办/办结单据留痕不可删） */
+    public void adminDelete(Long id) {
+        Repair r = require(id);
+        if (!Repair.CANCELED.equals(r.getStatus())) {
+            throw new BizException(400, "仅已撤回的报修单可删除（在办/已办结单据留痕不可删）");
+        }
+        for (String objectName : parsePhotos(r.getPhotos())) {
+            pdfStore.delete(objectName);
+        }
+        repairMapper.deleteById(id);
+    }
+
     /** 逐张凭证照片回图（照片内容=故障现场，报修人本人与管理员可见） */
     public String photoObject(Long id, int idx, UserPrincipal user) {
         Repair r = require(id);

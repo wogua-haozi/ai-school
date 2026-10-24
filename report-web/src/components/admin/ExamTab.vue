@@ -18,6 +18,11 @@
       <el-table-column label="满分合计" width="90" align="center">
         <template #default="{ row }">{{ row.gradeMaxTotal ?? '—' }}</template>
       </el-table-column>
+      <el-table-column label="操作" width="90">
+        <template #default="{ row }">
+          <el-button link type="danger" size="small" @click="remove(row)">删考试</el-button>
+        </template>
+      </el-table-column>
     </el-table>
     <p class="hint" style="margin-top: 10px">
       开=教师在录入窗口内可录、且仅可见自己录入的成绩（方案A）；关=教师端该考试成绩全不可见。排名对教师始终不开放。
@@ -27,7 +32,7 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '../../api/http'
 
 const exams = ref<any[]>([])
@@ -45,6 +50,17 @@ async function toggle(row: any, open: boolean) {
   } finally {
     row._saving = false
   }
+}
+
+/** 批67 A2：删整场考试（含其下全部成绩与科目关联；报告按考试读成绩，重新生成即对齐） */
+async function remove(row: any) {
+  await ElMessageBox.confirm(
+    `删除「${row.name}」？该场考试已录入的全部成绩与科目将一并删除，不可恢复。`, '删除考试',
+    { type: 'warning' },
+  )
+  await api(`/api/score/exam/${row.id}`, { method: 'DELETE' })
+  ElMessage.success('已删除')
+  await load()
 }
 
 onMounted(load)

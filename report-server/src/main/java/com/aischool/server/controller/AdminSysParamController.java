@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.LinkedHashMap;
@@ -25,7 +26,8 @@ import java.util.Map;
  * 当前覆盖学生请假分级阈值（leave_level1_days / leave_level2_days / leave_max_days，
  * 消费方 StudentLeaveService 动态读库，改完即时生效）；
  * 批51 生活老师登记时段窗（leave_dorm_windows，"HH:mm-HH:mm" 逗号分隔，未配置=默认 12:00-14:15,21:30-07:30，清空=不限）；
- * 批39⑥ 文明班口径切换日（civility_eval_from，yyyy-MM-dd，空=未切换仍按旧打分口径排名）。
+ * 批39⑥ 文明班口径切换日（civility_eval_from，yyyy-MM-dd，空=未切换仍按旧打分口径排名）；
+ * 批65 导师谈心跟进天数（talk_follow_days，默认 14，超期未跟进的谈心在待办里提醒）。
  */
 @RestController
 @RequestMapping("/api/admin/sys-param")
@@ -82,6 +84,18 @@ public class AdminSysParamController {
         return c == null || c.getCfgValue() == null ? dft : c.getCfgValue();
     }
 
+    /** 批67 A3 成绩等级线（0<x≤100，脏值回落默认；消费方 ScoreLevelService 同口径） */
+    private BigDecimal cfgDec(String key, String dft) {
+        String v = cfgStr(key);
+        try {
+            BigDecimal d = v.isBlank() ? new BigDecimal(dft) : new BigDecimal(v);
+            return d.compareTo(BigDecimal.ZERO) > 0 && d.compareTo(BigDecimal.valueOf(100)) <= 0
+                    ? d : new BigDecimal(dft);
+        } catch (NumberFormatException e) {
+            return new BigDecimal(dft);
+        }
+    }
+
     @GetMapping
     public ApiResponse<Map<String, Object>> get() {
         checkAdmin();
@@ -91,6 +105,10 @@ public class AdminSysParamController {
         m.put("leaveMaxDays", cfgInt("leave_max_days", 30));
         m.put("leaveDormWindows", cfgStrOr("leave_dorm_windows", "12:00-14:15,21:30-07:30"));
         m.put("civilityEvalFrom", cfgStr("civility_eval_from"));
+        m.put("talkFollowDays", cfgInt("talk_follow_days", 14));
+        m.put("scoreGradeA", cfgDec("score_grade_a", "85"));
+        m.put("scoreGradeB", cfgDec("score_grade_b", "70"));
+        m.put("scoreGradeC", cfgDec("score_grade_c", "60"));
         return ApiResponse.ok(m);
     }
 
@@ -132,11 +150,26 @@ public class AdminSysParamController {
                 throw new BizException(400, "文明班切换日不能晚于今天");
             }
         }
+        int follow = req.getTalkFollowDays() == null ? 14 : req.getTalkFollowDays();
+        if (follow < 1 || follow > 180) {
+            throw new BizException(400, "谈心跟进天数须在 1~180 之间");
+        }
+        BigDecimal ga = req.getScoreGradeA() == null ? new BigDecimal("85") : req.getScoreGradeA();
+        BigDecimal gb = req.getScoreGradeB() == null ? new BigDecimal("70") : req.getScoreGradeB();
+        BigDecimal gc = req.getScoreGradeC() == null ? new BigDecimal("60") : req.getScoreGradeC();
+        if (ga.compareTo(gb) <= 0 || gb.compareTo(gc) <= 0
+                || gc.compareTo(BigDecimal.ZERO) <= 0 || ga.compareTo(BigDecimal.valueOf(100)) > 0) {
+            throw new BizException(400, "成绩等级线须满足 0 < C 线 < B 线 < A 线 ≤ 100（百分比）");
+        }
         set("leave_level1_days", l1);
         set("leave_level2_days", l2);
         set("leave_max_days", max);
         setStr("leave_dorm_windows", dorm);
         setStr("civility_eval_from", from == null ? "" : from.toString());
+        set("talk_follow_days", follow);
+        setStr("score_grade_a", ga.stripTrailingZeros().toPlainString());
+        setStr("score_grade_b", gb.stripTrailingZeros().toPlainString());
+        setStr("score_grade_c", gc.stripTrailingZeros().toPlainString());
         return get();
     }
 
@@ -147,5 +180,9 @@ public class AdminSysParamController {
         private Integer leaveMaxDays;
         private String leaveDormWindows;
         private String civilityEvalFrom;
+        private Integer talkFollowDays;
+        private BigDecimal scoreGradeA;
+        private BigDecimal scoreGradeB;
+        private BigDecimal scoreGradeC;
     }
 }

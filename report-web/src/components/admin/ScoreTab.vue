@@ -43,9 +43,12 @@
       <el-table-column label="年级名次" min-width="100" align="center">
         <template #default="{ row }">{{ row.gradeRank ?? '—' }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="90" align="center">
+      <el-table-column label="操作" width="110" align="center">
         <template #default="{ row }">
           <el-button v-if="editable || gradeEditable" link type="primary" @click="saveOne(row)">存</el-button>
+          <!-- 批65：单条删除（entry 双空=删行，含等级） -->
+          <el-button v-if="editable && (row.score != null || row.grade != null)" link type="danger"
+            @click="delScore(row)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -249,6 +252,18 @@ async function saveOne(row: any) {
     })
   }
   ElMessage.success(`已保存 ${row.name}`)
+  await load()
+}
+
+/** 批65：删该生该科成绩（含等级）——entry 传 score/grade 双空=整行删除（后端 writeRows 语义） */
+async function delScore(row: any) {
+  await ElMessageBox.confirm(`删除 ${row.name} 的该科成绩与等级？`, '删除成绩', { type: 'warning' })
+  await api('/api/score/entry', {
+    method: 'PUT',
+    json: { examId: examId.value, subjectId: subjectId.value,
+      rows: [{ studentId: row.studentId, score: null, grade: null }] },
+  })
+  ElMessage.success(`已删除 ${row.name} 该科成绩`)
   await load()
 }
 

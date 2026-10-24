@@ -83,6 +83,26 @@ public class MomentController {
         return ApiResponse.ok();
     }
 
+    /** 批65：改文字（仅记录教师本人或管理员，不限时；note 传空=清空） */
+    @PutMapping("/{id}")
+    public ApiResponse<Void> updateNote(@PathVariable Long id, @RequestBody NoteReq req) {
+        momentService.updateNote(AuthUtil.current(), id, req.getNote());
+        return ApiResponse.ok();
+    }
+
+    /** 批65：删除自建场景标签（未被微光引用时） */
+    @DeleteMapping("/tags/{id}")
+    public ApiResponse<Void> deleteTag(@PathVariable Long id) {
+        momentService.deleteTag(AuthUtil.current(), id);
+        return ApiResponse.ok();
+    }
+
+    @Data
+    public static class NoteReq {
+        private String note;
+    }
+
+
     /** 照片预览（inline）。流式+ETag+Cache-Control：家长端万人级拉图热路径，
         命中缓存/304 后 MinIO 与本服务带宽近似归零（同 ContentController 模式）。
         批62 多图：?i= 索引（默认 0=首张），photo_url 逗号分隔多对象名 */

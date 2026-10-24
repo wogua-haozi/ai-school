@@ -173,6 +173,13 @@ public class ReportController {
         for (Report r : reports) {
             latest.putIfAbsent(r.getStudentId() + ":" + ("MID".equals(r.getPeriod()) ? "MID" : "FINAL"), r);
         }
+        // 批65：删除权限=生成教师本人（任务建单人）或管理员
+        List<Long> taskIds = latest.values().stream().map(Report::getTaskId)
+                .filter(java.util.Objects::nonNull).distinct().toList();
+        Map<Long, Long> creatorByTask = taskIds.isEmpty() ? Map.of()
+                : taskMapper.selectBatchIds(taskIds).stream().collect(java.util.stream.Collectors.toMap(
+                        ReportTask::getId, t -> t.getCreateBy() == null ? -1L : t.getCreateBy()));
+        boolean admin = "ADMIN".equals(user.role());
         return ApiResponse.ok(latest.values().stream().map(r -> {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("reportId", r.getId());
@@ -184,8 +191,32 @@ public class ReportController {
             m.put("genTime", r.getGenTime());
             m.put("error", r.getError());
             m.put("taskId", r.getTaskId());
+            m.put("canDelete", admin || user.userId().equals(creatorByTask.get(r.getTaskId())));
             return m;
         }).toList());
+    }
+
+    /** 批65：删除报告（误生成清理：删记录+MinIO 教师版/家长版双文件；生成教师本人或管理员） */
+    @DeleteMapping("/{reportId}")
+    public ApiResponse<Void> deleteReport(@PathVariable Long reportId) {
+        var user = AuthUtil.current();
+        Report r = reportMapper.selectById(reportId);
+        if (r == null) {
+            throw new BizException(404, "报告不存在");
+        }
+        ReportTask task = r.getTaskId() == null ? null : taskMapper.selectById(r.getTaskId());
+        boolean mine = task != null && task.getCreateBy() != null && task.getCreateBy().equals(user.userId());
+        if (!mine && !"ADMIN".equals(user.role())) {
+            throw new BizException(403, "仅生成教师本人或管理员可删除报告");
+        }
+        if (r.getFileUrl() != null) {
+            pdfStore.delete(r.getFileUrl());
+        }
+        if (r.getParentFileUrl() != null) {
+            pdfStore.delete(r.getParentFileUrl());
+        }
+        reportMapper.deleteById(reportId);
+        return ApiResponse.ok();
     }
 
     /** 契约 JSON（调试/契约零漂移校验用，同渲染核心输入） */

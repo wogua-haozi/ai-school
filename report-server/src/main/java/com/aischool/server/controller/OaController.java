@@ -63,7 +63,7 @@ public class OaController {
         return ApiResponse.ok(oaService.detail(id));
     }
 
-    /** 审批动作：AGREE/REJECT（当前级审批人或 ADMIN）；REVOKE 仅申请人本人 */
+    /** 审批动作：AGREE/REJECT（当前级审批人或 ADMIN）；REVOKE 仅申请人本人（批65 核实：撤回链路本就完整） */
     @PostMapping("/{id}/handle")
     public ApiResponse<Void> handle(@PathVariable Long id, @RequestBody OaService.HandleReq req) {
         oaService.handle(id, req);

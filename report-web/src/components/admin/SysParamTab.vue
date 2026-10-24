@@ -2,7 +2,7 @@
   <div class="sys-param">
     <el-alert type="info" :closable="false" show-icon
       title="常用系统参数（保存后即时生效，无需重启）"
-      description="当前开放：学生请假分级审批的天数阈值、生活老师登记时段、文明班评比口径切换日。" />
+      description="当前开放：学生请假分级审批的天数阈值、生活老师登记时段、文明班评比口径切换日、导师谈心跟进天数。" />
 
     <el-form label-width="150px" class="form" v-loading="loading">
       <div class="sec">学生请假分级审批</div>
@@ -28,6 +28,26 @@
         <el-date-picker v-model="p.civilityEvalFrom" type="date" value-format="YYYY-MM-DD"
           placeholder="留空 = 仍按旧打分口径" clearable style="width: 180px" />
         <span class="hint">自该日起：文明班分 = 每日基础 120 + 素养评价分直加；此前的历史打分仍计入排名</span>
+      </el-form-item>
+
+      <div class="sec">导师谈心</div>
+      <el-form-item label="跟进天数">
+        <el-input-number v-model="p.talkFollowDays" :min="1" :max="180" />
+        <span class="hint">谈心标记「需随访」时的缺省到期日 = 谈心日期 + 该天数（默认 14）；到期未闭环每日晨间提醒</span>
+      </el-form-item>
+
+      <div class="sec">成绩等级线</div>
+      <el-form-item label="A 线（%）">
+        <el-input-number v-model="p.scoreGradeA" :min="1" :max="100" :step="0.5" :precision="1" />
+        <span class="hint">得分率 ≥ A 线为 A（默认 85）</span>
+      </el-form-item>
+      <el-form-item label="B 线（%）">
+        <el-input-number v-model="p.scoreGradeB" :min="1" :max="100" :step="0.5" :precision="1" />
+        <span class="hint">≥ B 线为 B（默认 70）</span>
+      </el-form-item>
+      <el-form-item label="C 线（%）">
+        <el-input-number v-model="p.scoreGradeC" :min="1" :max="100" :step="0.5" :precision="1" />
+        <span class="hint">≥ C 线为 C、低于 C 线为 D（默认 60）</span>
       </el-form-item>
 
       <el-form-item>
@@ -67,6 +87,10 @@ async function save() {
         leaveMaxDays: p.value.leaveMaxDays,
         leaveDormWindows: p.value.leaveDormWindows || '',
         civilityEvalFrom: p.value.civilityEvalFrom || '',
+        talkFollowDays: p.value.talkFollowDays,
+        scoreGradeA: p.value.scoreGradeA,
+        scoreGradeB: p.value.scoreGradeB,
+        scoreGradeC: p.value.scoreGradeC,
       },
     })
     ElMessage.success('已保存，即时生效')

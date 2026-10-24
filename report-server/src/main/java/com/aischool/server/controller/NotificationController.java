@@ -103,6 +103,7 @@ public class NotificationController {
             case "REPAIR_RESULT" -> "报修结果";
             case "REGISTER_TODO" -> "账号待审";
             case "ALERT" -> "系统告警";
+            case "NOTICE_BROADCAST" -> "校园通知";
             default -> "系统消息";
         };
     }

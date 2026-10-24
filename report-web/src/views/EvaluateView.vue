@@ -31,9 +31,14 @@
           <span class="hint">对班级层面的加/减分（如卫生检查、全班获奖），计入文明班评比；不落到具体学生</span>
         </template>
         <el-form label-width="90px">
+          <el-form-item label="年级">
+            <el-select v-model="csGrade" placeholder="选择年级" style="min-width: 120px" @change="onCsGradeChange">
+              <el-option v-for="g in csGrades" :key="g" :label="g" :value="g" />
+            </el-select>
+          </el-form-item>
           <el-form-item label="班级">
-            <el-select v-model="csClassId" placeholder="选择班级" style="min-width: 200px" @change="loadCsRecords">
-              <el-option v-for="c in csClasses" :key="c.id" :label="`${c.gradeName}${c.name}`" :value="c.id" />
+            <el-select v-model="csClassId" placeholder="选择班级" style="min-width: 140px" @change="loadCsRecords">
+              <el-option v-for="c in csGradeClasses" :key="c.id" :label="c.name" :value="c.id" />
             </el-select>
           </el-form-item>
           <el-form-item label="日期">
@@ -168,6 +173,10 @@ const mode = ref<'stu' | 'class'>('stu')
 const canClassScore = ref(false)
 const conductSections = CONDUCT_SECTIONS
 const csClasses = ref<{ id: number; name: string; gradeName: string }[]>([])
+/** 批66① 年级→班级级联：全校班级先按年级分组，先选年级再选班级（原平铺下拉班级多了难找） */
+const csGrade = ref<string>()
+const csGrades = computed(() => [...new Set(csClasses.value.map((c) => c.gradeName).filter(Boolean))])
+const csGradeClasses = computed(() => csClasses.value.filter((c) => c.gradeName === csGrade.value))
 const csClassId = ref<number>()
 const csCategory = ref<number>()
 const csItemText = ref('')
@@ -194,6 +203,12 @@ function pickCsItem(it: { text: string; delta: string }) {
 /** 常见条目分值固定，锁定后仅可换选条目或点「重新填写」恢复自由录入 */
 function onCsCategoryChange() {
   if (csPicked.value) clearCsPick()
+}
+
+/** 换年级：班级自动落到该年级第一个，并带出其记分记录 */
+function onCsGradeChange() {
+  csClassId.value = csGradeClasses.value[0]?.id
+  loadCsRecords()
 }
 
 function clearCsPick() {
@@ -312,7 +327,10 @@ async function init() {
   csClasses.value = await api<{ id: number; name: string; gradeName: string }[]>(
     '/api/civility/class-score/classes').catch(() => [])
   canClassScore.value = csClasses.value.length > 0
-  if (canClassScore.value) csClassId.value = csClasses.value[0].id
+  if (canClassScore.value) {
+    csGrade.value = csGrades.value[0]
+    csClassId.value = csClasses.value[0].id
+  }
 }
 
 /** 学生详情宫格带学生进来：自动选中该生（班级 → 学生 → 拉评价记录） */

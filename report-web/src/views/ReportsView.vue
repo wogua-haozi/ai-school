@@ -59,6 +59,9 @@
             @click="regenerate(row)">重新生成</el-button>
           <el-button v-if="row.status === '成功'" size="small" type="primary" @click="preview(row)">预览</el-button>
           <el-button v-if="row.status === '成功'" size="small" @click="download(row)">下载</el-button>
+          <!-- 批65：删误生成报告（生成教师本人或管理员；删记录+教师版/家长版双 PDF） -->
+          <el-button v-if="row.reportId && row.canDelete" link type="danger" size="small"
+            :loading="deleting === row.reportId" @click="delReport(row)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -85,8 +88,9 @@ const termId = ref<number>()
 const reportType = ref<'TERM' | 'YEAR' | 'SCHOOL'>('TERM')
 const reportPeriod = ref<'FINAL' | 'MID'>('FINAL')
 const scope = ref<'class' | 'grade'>('class')
-const rows = ref<{ className?: string; studentId: number; studentNo: string; name: string; status: string; error?: string; reportId?: number }[]>([])
+const rows = ref<{ className?: string; studentId: number; studentNo: string; name: string; status: string; error?: string; reportId?: number; canDelete?: boolean }[]>([])
 const generating = ref<number | null>(null)
+const deleting = ref<number | null>(null)
 const batching = ref(false)
 
 /** 期次默认预判（批42）：已结束的学期=期末；进行中=今天在学期前半→期中，后半→期末 */
@@ -135,13 +139,13 @@ async function reload() {
       const stu = await api<{ records: { id: number; studentNo: string; name: string }[] }>(
         `/api/student/list?classId=${c.id}&page=1&size=100`,
       )
-      const reports = await api<{ studentId: number; status: string; error?: string; reportId?: number }[]>(
+      const reports = await api<{ studentId: number; status: string; error?: string; reportId?: number; canDelete?: boolean }[]>(
         `/api/report/list?classId=${c.id}&termId=${termId.value}&scopeType=${reportType.value}`,
       )
       const byStu = new Map(reports.map((r) => [`${r.studentId}:${(r as { period?: string }).period ?? 'FINAL'}`, r]))
       return stu.records.map((s) => {
         const r = byStu.get(`${s.id}:${reportPeriod.value}`)
-        return { className: c.name, studentId: s.id, studentNo: s.studentNo, name: s.name, status: r?.status ?? '未生成', error: r?.error, reportId: r?.reportId }
+        return { className: c.name, studentId: s.id, studentNo: s.studentNo, name: s.name, status: r?.status ?? '未生成', error: r?.error, reportId: r?.reportId, canDelete: r?.canDelete }
       })
     }))
     rows.value = parts.flat()
@@ -151,13 +155,13 @@ async function reload() {
   const stu = await api<{ records: { id: number; studentNo: string; name: string }[] }>(
     `/api/student/list?classId=${classId.value}&page=1&size=100`,
   )
-  const reports = await api<{ studentId: number; status: string; error?: string; reportId?: number }[]>(
+  const reports = await api<{ studentId: number; status: string; error?: string; reportId?: number; canDelete?: boolean }[]>(
     `/api/report/list?classId=${classId.value}&termId=${termId.value}&scopeType=${reportType.value}`,
   )
   const byStu = new Map(reports.map((r) => [`${r.studentId}:${(r as { period?: string }).period ?? 'FINAL'}`, r]))
   rows.value = stu.records.map((s) => {
     const r = byStu.get(`${s.id}:${reportPeriod.value}`)
-    return { studentId: s.id, studentNo: s.studentNo, name: s.name, status: r?.status ?? '未生成', error: r?.error, reportId: r?.reportId }
+    return { studentId: s.id, studentNo: s.studentNo, name: s.name, status: r?.status ?? '未生成', error: r?.error, reportId: r?.reportId, canDelete: r?.canDelete }
   })
 }
 
@@ -245,6 +249,22 @@ async function download(row: { name: string; reportId?: number }) {
   const blob = await fetchBlob(`/api/report/file/${row.reportId}?disposition=attachment`)
   const label = reportType.value === 'YEAR' ? '学年报告' : reportType.value === 'SCHOOL' ? '在校报告' : '素质报告单'
   await saveFile(blob, `${row.name}-${label}.pdf`)
+}
+
+/** 批65：删除误生成的报告（生成教师本人或管理员；记录与教师版/家长版双 PDF 一并删，不可恢复） */
+async function delReport(row: { name: string; reportId?: number }) {
+  if (!row.reportId) return
+  await ElMessageBox.confirm(
+    `删除 ${row.name} 的这份报告？PDF 文件与记录一并删除、不可恢复（需要重出时可再生成）。`, '删除报告',
+    { type: 'warning' })
+  deleting.value = row.reportId
+  try {
+    await api(`/api/report/${row.reportId}`, { method: 'DELETE' })
+    ElMessage.success('已删除')
+    await reload()
+  } finally {
+    deleting.value = null
+  }
 }
 
 onMounted(init)

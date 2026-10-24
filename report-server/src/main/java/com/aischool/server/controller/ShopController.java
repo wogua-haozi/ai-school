@@ -137,6 +137,30 @@ public class ShopController {
         return ApiResponse.ok(Map.of("status", 1, "expenseId", id));
     }
 
+    /** 批65：撤销兑换（误录整单退回：退币+回库存+删记录；录入教师本人或管理员，核销前后均可） */
+    @DeleteMapping("/redeem/{id}")
+    @Transactional(rollbackFor = Exception.class)
+    public ApiResponse<Map<String, Object>> revertRedeem(@PathVariable Long id) {
+        var user = AuthUtil.current();
+        CoinExpense e = coinExpenseMapper.selectById(id);
+        if (e == null || e.getItemId() == null) {
+            throw new BizException(404, "兑换记录不存在");
+        }
+        if (!user.userId().equals(e.getOperatorId()) && !"ADMIN".equals(user.role())) {
+            throw new BizException(403, "仅录入教师本人或管理员可撤销");
+        }
+        coinAccountMapper.upsertIncome(e.getStudentId(), e.getCoin());
+        ShopItem item = shopItemMapper.selectById(e.getItemId());
+        if (item != null && item.getStock() != null && item.getStock() >= 0) {
+            shopItemMapper.restoreStock(e.getItemId());
+        }
+        coinExpenseMapper.deleteById(id);
+        CoinAccount after = coinAccountMapper.selectOne(new LambdaQueryWrapper<CoinAccount>()
+                .eq(CoinAccount::getStudentId, e.getStudentId()).last("LIMIT 1"));
+        return ApiResponse.ok(Map.of("expenseId", id, "coinBack", e.getCoin(),
+                "currentCoin", after != null ? after.getCurrentCoin() : BigDecimal.ZERO));
+    }
+
     @Data
     public static class RedeemReq {
         @NotNull(message = "studentId 不能为空")

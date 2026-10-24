@@ -49,6 +49,13 @@ public class ConductLedgerService {
         conductAccountMapper.upsertApply(studentId, term.getId(), rule.getBaseScore(), delta);
     }
 
+    /** 撤销一条手动流水（批67 A1）：删流水并余额反向回补（upsertApply 传负 delta 即回退） */
+    public void revokeManual(ConductLog log) {
+        conductLogMapper.deleteById(log.getId());
+        conductAccountMapper.upsertApply(log.getStudentId(), log.getTermId(),
+                getRule().getBaseScore(), log.getDelta().negate());
+    }
+
     /** 规则表单行；异常兜底返回默认 100/90/75/60（表有种子，理论不走到） */
     public ConductRule getRule() {
         ConductRule rule = conductRuleMapper.selectOne(new LambdaQueryWrapper<ConductRule>().last("LIMIT 1"));

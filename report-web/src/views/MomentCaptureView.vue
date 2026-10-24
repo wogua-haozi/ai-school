@@ -42,8 +42,11 @@
       <div class="app-card sec">
         <div class="app-sec" style="margin: 0 0 10px">场景标签</div>
         <div class="tags">
-          <button v-for="t in sceneTags" :key="t" class="tag" :class="{ on: sceneTag === t }"
-            type="button" @click="sceneTag = t">{{ t }}</button>
+          <button v-for="t in sceneTags" :key="t.id" class="tag" :class="{ on: sceneTag === t.name }"
+            type="button" @click="sceneTag = t.name">{{ t.name }}
+            <!-- 批65：自建标签可删（建标签人本人；已被微光引用则后端拒绝） -->
+            <van-icon v-if="t.mine" name="cross" class="tag-x" @click.stop="delTag(t)" />
+          </button>
           <button class="tag add" :class="{ editing: tagAdding }" type="button" @click="startAddTag">
             <template v-if="!tagAdding"><van-icon name="plus" /> 新建</template>
             <template v-else>
@@ -101,13 +104,13 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { showToast } from 'vant'
+import { showConfirmDialog, showToast } from 'vant'
 import { Capacitor } from '@capacitor/core'
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
 import { api, apiForm } from '../api/http'
 
 /** 场景标签字典（后端 t_moment_tag，教师可自建） */
-const sceneTags = ref<string[]>([])
+const sceneTags = ref<{ id: number; name: string; mine?: boolean }[]>([])
 const tagAdding = ref(false)
 const newTag = ref('')
 const tagInput = ref<HTMLInputElement>()
@@ -242,7 +245,20 @@ function avaColor(name: string) {
 }
 
 async function loadTags() {
-  sceneTags.value = (await api<{ id: number; name: string }[]>('/api/moment/tags')).map((t) => t.name)
+  sceneTags.value = await api<{ id: number; name: string; mine?: boolean }[]>('/api/moment/tags')
+}
+
+/** 批65：删自建标签（本人或管理员；已被微光引用则后端拒绝并提示条数） */
+async function delTag(t: { id: number; name: string }) {
+  try {
+    await showConfirmDialog({ title: '删除标签', message: `删除自建标签「${t.name}」？未被微光使用才可删。` })
+  } catch { return }
+  try {
+    await api(`/api/moment/tags/${t.id}`, { method: 'DELETE' })
+    if (sceneTag.value === t.name) sceneTag.value = ''
+    await loadTags()
+    showToast('标签已删除')
+  } catch { /* 后端 message 已由 http 层透出 */ }
 }
 
 function startAddTag() {
@@ -301,9 +317,12 @@ onMounted(async () => {
 
 /* 场景标签 chips */
 .tags { display: flex; flex-wrap: wrap; gap: 8px; }
-.tag { padding: 7px 16px; border: 1px solid var(--app-card-border); border-radius: 999px;
+.tag { display: inline-flex; align-items: center; gap: 3px; padding: 7px 16px;
+  border: 1px solid var(--app-card-border); border-radius: 999px;
   background: #fff; color: var(--app-text-2); font-size: 13px; cursor: pointer;
   -webkit-tap-highlight-color: transparent; }
+.tag-x { margin-right: -6px; padding: 4px; color: #C0C8D6; font-size: 13px; }
+.tag-x:active { color: var(--shine-red); }
 .tag.on { border-color: var(--app-blue); background: rgba(168,35,43,.08); color: var(--app-blue); font-weight: 600; }
 .tag.add { display: inline-flex; align-items: center; gap: 4px; color: var(--app-text-2); border-style: dashed; }
 .tag.add.editing { padding: 0 10px 0 12px; }

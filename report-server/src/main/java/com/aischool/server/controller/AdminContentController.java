@@ -4,8 +4,10 @@ import com.aischool.server.common.ApiResponse;
 import com.aischool.server.common.BizException;
 import com.aischool.server.entity.Clazz;
 import com.aischool.server.entity.ContentItem;
+import com.aischool.server.entity.Grade;
 import com.aischool.server.mapper.ClazzMapper;
 import com.aischool.server.mapper.ContentItemMapper;
+import com.aischool.server.mapper.GradeMapper;
 import com.aischool.server.security.AuthUtil;
 import com.aischool.server.service.auth.PermissionService;
 import com.aischool.server.service.report.PdfStoreService;
@@ -42,6 +44,7 @@ public class AdminContentController {
 
     private final ContentItemMapper contentMapper;
     private final ClazzMapper clazzMapper;
+    private final GradeMapper gradeMapper;
     private final PermissionService permissionService;
     private final PdfStoreService pdfStore;
 
@@ -68,8 +71,9 @@ public class AdminContentController {
                         .orderByDesc(ContentItem::getPublishTime)
                         .orderByDesc(ContentItem::getId));
         Map<Long, String> classNames = classNamesOf(p.getRecords());
+        Map<Long, String> gradeNames = gradeNamesOf(p.getRecords());
         List<Map<String, Object>> records = p.getRecords().stream()
-                .map(it -> row(it, classNames)).toList();
+                .map(it -> row(it, classNames, gradeNames)).toList();
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("total", p.getTotal());
         data.put("records", records);
@@ -184,12 +188,18 @@ public class AdminContentController {
 
     // ────────────────────────── helpers ──────────────────────────
 
-    /** 公共字段校验+落值（type 不在此处：create 定死不可改） */
+    /** 公共字段校验+落值（type 不在此处：create 定死不可改）；批66② 范围扩到 STAFF/GRADE */
     private void apply(ContentItem it, ItemReq req) {
         if (req.getTitle() == null || req.getTitle().isBlank()) {
             throw new BizException(400, "标题不能为空");
         }
-        if ("CLASS".equals(req.getScope())) {
+        String scope = switch (req.getScope() == null ? "" : req.getScope()) {
+            case "CLASS" -> "CLASS";
+            case ContentItem.SCOPE_STAFF -> ContentItem.SCOPE_STAFF;
+            case ContentItem.SCOPE_GRADE -> ContentItem.SCOPE_GRADE;
+            default -> "ALL";
+        };
+        if ("CLASS".equals(scope)) {
             if (req.getClassId() == null) {
                 throw new BizException(400, "指定班级时须选择班级");
             }
@@ -197,12 +207,21 @@ public class AdminContentController {
                 throw new BizException(404, "班级不存在");
             }
         }
+        if (ContentItem.SCOPE_GRADE.equals(scope)) {
+            if (req.getGradeId() == null) {
+                throw new BizException(400, "指定年级时须选择年级");
+            }
+            if (gradeMapper.selectById(req.getGradeId()) == null) {
+                throw new BizException(404, "年级不存在");
+            }
+        }
         it.setTitle(req.getTitle().trim());
         it.setCoverUrl(blankToNull(req.getCoverUrl()));
         it.setVideoUrl(blankToNull(req.getVideoUrl()));
         it.setContent(blankToNull(req.getContent()));
-        it.setScope("CLASS".equals(req.getScope()) ? "CLASS" : "ALL");
-        it.setClassId("CLASS".equals(it.getScope()) ? req.getClassId() : null);
+        it.setScope(scope);
+        it.setClassId("CLASS".equals(scope) ? req.getClassId() : null);
+        it.setGradeId(ContentItem.SCOPE_GRADE.equals(scope) ? req.getGradeId() : null);
     }
 
     private void applyStatus(ContentItem it, Integer status) {
@@ -246,7 +265,14 @@ public class AdminContentController {
                 .collect(Collectors.toMap(Clazz::getId, Clazz::getName));
     }
 
-    private Map<String, Object> row(ContentItem it, Map<Long, String> classNames) {
+    private Map<Long, String> gradeNamesOf(List<ContentItem> items) {
+        List<Long> ids = items.stream().map(ContentItem::getGradeId)
+                .filter(g -> g != null).distinct().toList();
+        return ids.isEmpty() ? Map.of() : gradeMapper.selectBatchIds(ids).stream()
+                .collect(Collectors.toMap(Grade::getId, Grade::getName, (a, b) -> a));
+    }
+
+    private Map<String, Object> row(ContentItem it, Map<Long, String> classNames, Map<Long, String> gradeNames) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("id", it.getId());
         m.put("type", it.getType());
@@ -257,6 +283,9 @@ public class AdminContentController {
         m.put("scope", it.getScope());
         m.put("classId", it.getClassId());
         m.put("className", it.getClassId() == null ? null : classNames.get(it.getClassId()));
+        m.put("gradeId", it.getGradeId());
+        m.put("gradeName", it.getGradeId() == null ? null : gradeNames.get(it.getGradeId()));
+        m.put("createBy", it.getCreateBy());
         m.put("status", it.getStatus());
         m.put("publishTime", it.getPublishTime() == null ? null : it.getPublishTime().toString());
         m.put("createTime", it.getCreateTime() == null ? null : it.getCreateTime().toString());
@@ -278,6 +307,8 @@ public class AdminContentController {
         private String content;
         private String scope;
         private Long classId;
+        /** 批66② GRADE 范围的目标年级 */
+        private Long gradeId;
         /** 仅 create 消费：1=保存并发布；update 忽略此字段（发布/下架走专用接口） */
         private Integer status;
     }

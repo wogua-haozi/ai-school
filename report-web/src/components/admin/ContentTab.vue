@@ -7,7 +7,8 @@
     </div>
 
     <el-alert type="info" :closable="false" class="tip">
-      通知家长的学校公告。可见范围=全校或指定班级；家长端「通知公告」Tab 查看。
+      面向家长：全校/指定班级（家长端「通知公告」Tab 查看）；面向教师：全体教师/指定年级（批66②
+      教师也可在 App 直接发布，此处可统一编辑/下架/删除）。
     </el-alert>
 
     <div v-if="selected.length" class="batch-bar">
@@ -31,7 +32,10 @@
         </template>
       </el-table-column>
       <el-table-column label="范围" width="120">
-        <template #default="{ row }">{{ row.scope === 'ALL' ? '全校' : row.className ?? '班级已删' }}</template>
+        <template #default="{ row }">{{
+          row.scope === 'ALL' ? '全校' : row.scope === 'STAFF' ? '全体教师'
+            : row.scope === 'GRADE' ? (row.gradeName ?? '年级已删') : row.className ?? '班级已删'
+        }}</template>
       </el-table-column>
       <el-table-column label="状态" width="80">
         <template #default="{ row }">
@@ -57,20 +61,20 @@
       </el-table-column>
     </el-table>
 
-    <!-- 通知已读回执（批9）：应读=可见范围已绑定家长 -->
+    <!-- 已读回执（批9 家长口径 / 批66② 教师口径） -->
     <el-dialog v-model="statsDlg" :title="`已读回执：${stats?.title ?? ''}`" width="440px">
       <template v-if="stats">
         <div class="stats-line">
           <b :style="{ color: stats.total && stats.read === stats.total ? '#67C23A' : '#E6A23C' }">
             {{ stats.read }} / {{ stats.total }}
           </b>
-          <span>家长已读（{{ stats.total ? Math.round((stats.read / stats.total) * 100) : 0 }}%）</span>
+          <span>{{ statsAudience }}已读（{{ stats.total ? Math.round((stats.read / stats.total) * 100) : 0 }}%）</span>
         </div>
         <template v-if="stats.unread.length">
           <div class="sec">未读名单（{{ stats.unread.length }}）</div>
           <div class="unread">
             <el-tag v-for="(u, i) in stats.unread" :key="i" size="small" type="info" class="u-tag">
-              {{ u.name }}（{{ u.phone }}）
+              {{ u.phone ? `${u.name}（${u.phone}）` : u.name }}
             </el-tag>
           </div>
         </template>
@@ -100,10 +104,16 @@
           <el-radio-group v-model="form.scope">
             <el-radio value="ALL">全校</el-radio>
             <el-radio value="CLASS">指定班级</el-radio>
+            <el-radio value="STAFF">全体教师</el-radio>
+            <el-radio value="GRADE">指定年级</el-radio>
           </el-radio-group>
           <el-select v-if="form.scope === 'CLASS'" v-model="form.classId" filterable
             placeholder="选择班级" style="width: 100%; margin-top: 6px">
             <el-option v-for="c in classes" :key="c.id" :label="c.name" :value="c.id" />
+          </el-select>
+          <el-select v-else-if="form.scope === 'GRADE'" v-model="form.gradeId" filterable
+            placeholder="选择年级" style="width: 100%; margin-top: 6px">
+            <el-option v-for="g in grades" :key="g.id" :label="g.name" :value="g.id" />
           </el-select>
         </el-form-item>
       </el-form>
@@ -131,6 +141,7 @@ const rows = ref<any[]>([])
 const selected = ref<any[]>([])
 const keyword = ref('')
 const classes = ref<{ id: number; name: string }[]>([])
+const grades = ref<{ id: number; name: string }[]>([])
 
 /* 封面缩略图：带 JWT 拉流 → objectURL（HTTP 缓存命中后不再走网络），tab 生命周期内复用 */
 const coverCache = reactive<Record<number, string>>({})
@@ -141,7 +152,8 @@ const form = ref<any>({})
 const coverUploading = ref(false)
 
 const canSave = computed(() => form.value.title?.trim() &&
-  (form.value.scope !== 'CLASS' || form.value.classId))
+  (form.value.scope !== 'CLASS' || form.value.classId) &&
+  (form.value.scope !== 'GRADE' || form.value.gradeId))
 
 function fmtTime(t?: string) {
   return t ? t.slice(0, 16).replace('T', ' ') : '—'
@@ -170,6 +182,9 @@ function openCreate() {
   editing.value = null
   form.value = { type, title: '', coverUrl: '', videoUrl: '', content: '', scope: 'ALL' }
   dialog.value = true
+  if (!grades.value.length) {
+    api<{ id: number; name: string }[]>('/api/meta/grades').then((gs) => (grades.value = gs)).catch(() => {})
+  }
 }
 
 function openEdit(row: any) {
@@ -241,12 +256,19 @@ onMounted(async () => {
   classes.value = await api<{ id: number; name: string }[]>('/api/meta/my-classes')
 })
 
-/* 已读回执（批9） */
+/* 已读回执（批9 家长口径；批66② STAFF/GRADE 走教师口径新端点） */
 const statsDlg = ref(false)
-const stats = ref<{ title: string; total: number; read: number; unread: { name: string; phone: string }[] } | null>(null)
+const stats = ref<{ title: string; total: number; read: number; unread: { name: string; phone?: string }[] } | null>(null)
+const statsAudience = ref('家长')
 
 async function openReadStats(row: any) {
-  stats.value = await api(`/api/admin/notice/${row.id}/read-stats`)
+  if (row.scope === 'STAFF' || row.scope === 'GRADE') {
+    statsAudience.value = '老师'
+    stats.value = await api(`/api/content/notice/${row.id}/read-stats`)
+  } else {
+    statsAudience.value = '家长'
+    stats.value = await api(`/api/admin/notice/${row.id}/read-stats`)
+  }
   statsDlg.value = true
 }
 </script>

@@ -105,7 +105,7 @@ public class FootprintController {
         return ApiResponse.ok(m);
     }
 
-    /** 删除本人足迹 */
+    /** 删除本人足迹（批67 B6 放行管理员兜底删除） */
     @DeleteMapping("/{id}")
     public ApiResponse<Void> delete(@PathVariable Long id) {
         rejectParent();
@@ -113,8 +113,9 @@ public class FootprintController {
         if (f == null) {
             throw new BizException(404, "足迹记录不存在");
         }
-        if (!f.getTeacherId().equals(AuthUtil.current().userId())) {
-            throw new BizException(403, "只能删除自己的足迹");
+        if (!f.getTeacherId().equals(AuthUtil.current().userId())
+                && !"ADMIN".equals(AuthUtil.current().role())) {
+            throw new BizException(403, "只有本人或管理员可删除足迹");
         }
         footprintMapper.deleteById(id);
         return ApiResponse.ok();

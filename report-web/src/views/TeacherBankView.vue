@@ -39,6 +39,9 @@
             <b>{{ l.reason }}</b>
             <p>{{ l.sourceType }}{{ l.createTime ? ' · ' + fmtTime(l.createTime) : '' }}</p>
           </div>
+          <!-- 批67：手动调整录错可撤销（录入人本人/管理员），余额反向回补；评价类流水不在此撤 -->
+          <van-button v-if="canRevokeConduct(l)" size="small" plain type="danger"
+            :loading="revokingConduct === l.id" @click="revokeConduct(l)">撤销</van-button>
           <b class="l-delta" :class="Number(l.delta) >= 0 ? 'pos' : 'neg'">{{ Number(l.delta) >= 0 ? '+' : '' }}{{ l.delta }}</b>
         </div>
       </div>
@@ -72,6 +75,9 @@
           </div>
           <van-button v-if="e.itemId && (e.status ?? 1) === 0" size="small" plain color="#B07A1C"
             :loading="confirming === e.id" @click="confirmPick(e)">核销</van-button>
+          <!-- 批65：误录兑换可整单撤销（录入教师本人；退币+回库存，核销前后均可。itemId 空的老手动流水无货架可退，不显示） -->
+          <van-button v-if="e.itemId && isMine(e)" size="small" plain type="danger"
+            :loading="reverting === e.id" @click="revertPick(e)">撤销</van-button>
           <b class="l-delta neg">-{{ e.coin }}</b>
         </div>
       </div>
@@ -106,8 +112,10 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { showConfirmDialog, showSuccessToast, showToast } from 'vant'
 import { api } from '../api/http'
+import { useAuthStore } from '../stores/auth'
 
 const route = useRoute()
+const auth = useAuthStore()
 
 interface Clazz { id: number; name: string }
 interface Stu { id: number; name: string; classId?: number }
@@ -124,6 +132,7 @@ const items = ref<any[]>([])
 const showAdjust = ref(false)
 const adjust = ref<{ delta: number | null; reason: string }>({ delta: null, reason: '' })
 const adjusting = ref(false)
+const revokingConduct = ref<number | null>(null)
 const redeeming = ref<number | null>(null)
 const confirming = ref<number | null>(null)
 const shelfRef = ref<HTMLElement>()
@@ -254,6 +263,51 @@ async function confirmPick(e: any) {
   } finally { confirming.value = null }
 }
 
+/** 批65：撤销兑换（录入教师本人或管理员）——退币+回库存+删记录，核销前后均可 */
+const reverting = ref<number | null>(null)
+const myId = ref<number>()
+function isMine(e: any) {
+  return e.operatorId != null && e.operatorId === myId.value
+}
+async function revertPick(e: any) {
+  try {
+    await showConfirmDialog({
+      title: '撤销兑换',
+      message: `撤销「${e.item}」兑换？退回 ${e.coin} 枚扬长币并回补库存，已核销同样可撤销。`,
+    })
+  } catch { return }
+  reverting.value = e.id
+  try {
+    await api(`/api/shop/redeem/${e.id}`, { method: 'DELETE' })
+    showSuccessToast('已撤销')
+    await loadWallet()
+  } catch (err: any) {
+    showToast(err?.message || '撤销失败')
+  } finally { reverting.value = null }
+}
+
+/** 批67：撤销操行分手动调整（录入人本人或管理员）——删流水+余额反向回补；评价类不在此撤 */
+function canRevokeConduct(l: any) {
+  return l.sourceType === '手动'
+    && (auth.role === 'ADMIN' || (l.operatorId != null && l.operatorId === myId.value))
+}
+async function revokeConduct(l: any) {
+  try {
+    await showConfirmDialog({
+      title: '撤销操行分调整',
+      message: `撤销「${l.reason}」（${Number(l.delta) >= 0 ? '+' : ''}${l.delta}）？余额将反向回补。`,
+    })
+  } catch { return }
+  revokingConduct.value = l.id
+  try {
+    await api(`/api/conduct/adjust/${l.id}`, { method: 'DELETE' })
+    showSuccessToast('已撤销')
+    await loadWallet()
+  } catch (err: any) {
+    showToast(err?.message || '撤销失败')
+  } finally { revokingConduct.value = null }
+}
+
 const palette = ['#A8232B', '#7C4DD8', '#0D9467', '#B07A1C', '#D6567A', '#3A7CA5']
 function avaColor(name?: string) {
   if (!name) return palette[0]
@@ -263,6 +317,7 @@ function avaColor(name?: string) {
 }
 
 onMounted(async () => {
+  api<{ id: number }>('/api/auth/me').then((d) => { myId.value = d.id }).catch(() => { /* 拿不到则不显撤销按钮 */ })
   classes.value = await api<Clazz[]>('/api/meta/my-classes').catch(() => [])
   await Promise.all([loadAllStudents(), loadItems()])
   const pre = Number(route.query.studentId)

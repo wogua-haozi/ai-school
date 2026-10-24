@@ -174,6 +174,14 @@ public class NotificationService {
         send(userId, Notification.REPAIR_RESULT, title, content, "/repair");
     }
 
+    /** 批66② 校园通知广播：发布即推 App 消息中心（点直达通知详情） */
+    public void campusNotice(List<Long> userIds, String title, String publisherName, Long noticeId) {
+        for (Long uid : userIds) {
+            send(uid, Notification.NOTICE_BROADCAST, title,
+                    publisherName + " 发布了校园通知，请查看", "/notices/" + noticeId);
+        }
+    }
+
     /** 账号/注册待审批：通知全部启用中的管理员+领导（App 链接按角色分流）；self=教师自助注册 */
     public void registerTodo(String targetName, String targetRoleName, String requesterName, boolean self) {
         String detail = self

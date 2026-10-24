@@ -186,6 +186,11 @@ public class ActivityController {
         }
         String contentType = file.getContentType() == null ? "image/jpeg" : file.getContentType();
         String objectName = "activity/" + id + "/" + UUID.randomUUID() + "." + ext;
+        // 批67 C7：覆盖上传先删旧封面对象，防 MinIO 孤儿（删除活动时已有同款清理）
+        Activity old = activityMapper.selectById(id);
+        if (old != null && old.getCoverUrl() != null && !old.getCoverUrl().isBlank()) {
+            pdfStore.delete(old.getCoverUrl());
+        }
         pdfStore.upload(objectName, new ByteArrayInputStream(bytes), bytes.length, contentType);
         activityMapper.update(null, new LambdaUpdateWrapper<Activity>()
                 .eq(Activity::getId, id).set(Activity::getCoverUrl, objectName));
