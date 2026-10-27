@@ -75,6 +75,8 @@ const router = createRouter({
     { path: '/teacher-honor', redirect: () => ({ path: '/my-growth', query: { tab: 'honor' } }) },
     { path: '/teacher-honor/new', component: () => import('../views/TeacherHonorCaptureView.vue'), meta: { layout: 'sub', title: '记录成就' } },
     { path: '/footprint', redirect: () => ({ path: '/my-growth', query: { tab: 'footprint' } }) },
+    // 教师月度操作自查（批70）：本人各板块操作次数，自然月切换（家长/门卫角色后端 403）
+    { path: '/usage-my', component: () => import('../views/UsageMyView.vue'), meta: { layout: 'sub', title: '我的操作统计' } },
     { path: '/admin', component: () => import('../views/AdminView.vue'), meta: { layout: 'sub', title: '系统管理', admin: true } },
     // 家长端（PARENT 分流，方案C 新中式风格 --shine-*）：孩子卡+评价动态；报告批5 家长版再开
     { path: '/p/home', component: () => import('../views/parent/ParentHomeView.vue'), meta: { layout: 'ptab', tab: 'phome' } },

@@ -1,9 +1,10 @@
 <template>
   <div class="app-page t-teachers">
-    <!-- 时间档（近7天/近30天/本月/近90天）：本月=当月1日起 -->
+    <!-- 时间档（近7天/近30天/本月/近90天）：本月=当月1日起；批70 加导出 -->
     <div class="ranges">
       <button v-for="r in ranges" :key="r.days" class="app-chip range" type="button"
         :class="{ on: r.days === days }" @click="switchDays(r.days)">{{ r.label }}</button>
+      <button class="app-chip range" type="button" @click="doExport">导出</button>
     </div>
 
     <div class="app-sec">教职工 · {{ rows.length }} 人（按总活跃排序）</div>
@@ -21,12 +22,15 @@
         </div>
       </div>
       <div class="u-grid">
-        <div class="u"><b>{{ t.reports }}</b><span>报告生成</span></div>
-        <div class="u"><b>{{ t.evals }}</b><span>素养评价</span></div>
-        <div class="u"><b>{{ t.scores }}</b><span>成绩录入</span></div>
-        <div class="u"><b>{{ t.moments }}</b><span>微光发布</span></div>
-        <div class="u"><b>{{ shortTokens(t.tokens) }}</b><span>AI tokens</span></div>
+        <div class="u"><b>{{ t.moments }}</b><span>微光时刻</span></div>
+        <div class="u"><b>{{ t.evals }}</b><span>学生评价</span></div>
+        <div class="u"><b>{{ t.activities }}</b><span>扬长课程</span></div>
+        <div class="u"><b>{{ t.honors }}</b><span>荣誉证书</span></div>
+        <div class="u"><b>{{ t.talks }}</b><span>导师谈心</span></div>
         <div class="u"><b>{{ t.logins }}</b><span>登录次数</span></div>
+        <div class="u"><b>{{ t.reports }}</b><span>报告生成</span></div>
+        <div class="u"><b>{{ t.scores }}</b><span>成绩录入</span></div>
+        <div class="u"><b>{{ shortTokens(t.tokens) }}</b><span>AI tokens</span></div>
       </div>
     </div>
 
@@ -36,13 +40,15 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { api } from '../../api/http'
+import { api, fetchBlob } from '../../api/http'
+import { saveFile } from '../../api/nativeShare'
 import { texAt } from '../../utils/tex'
 
 interface UsageRow {
   teacherId: number; name: string; role: string
   reports: number; tokens: number; evals: number
   scores: number; moments: number; logins: number
+  activities: number; honors: number; talks: number
   lastLogin: string | null
 }
 
@@ -89,6 +95,12 @@ function switchDays(d: number) {
   if (d === days.value) return
   days.value = d
   load()
+}
+
+/* 批70 导出（同当前时间档口径） */
+async function doExport() {
+  const blob = await fetchBlob(`/api/leader/teacher-usage/export?days=${days.value}`)
+  await saveFile(blob, `教师操作统计_近${days.value}天.xlsx`)
 }
 
 onMounted(load)

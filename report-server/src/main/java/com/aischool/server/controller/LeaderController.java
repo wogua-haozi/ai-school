@@ -20,6 +20,7 @@ import com.aischool.server.service.LoginUsageService;
 import com.aischool.server.service.OnlineTracker;
 import com.aischool.server.service.auth.DataScopeService;
 import com.aischool.server.service.auth.RoleApprovalService;
+import com.aischool.server.service.excel.ExcelScoreHelper;
 import com.aischool.server.service.score.ScoreService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
@@ -65,6 +66,7 @@ public class LeaderController {
     private final ScoreService scoreService;
     private final DataScopeService dataScope;
     private final TeachMapper teachMapper;
+    private final ExcelScoreHelper excel;
 
     /** 批64 领导层=书记/领导/主任（级长不在此列）：驾驶舱（概览/使用情况/成绩汇总/待审批）对领导层开放 */
     private void checkLeader() {
@@ -126,20 +128,97 @@ public class LeaderController {
     }
 
     /**
-     * 教师使用情况全景（批2）：在职教职工 × 六类行为计数（报告生成/AI tokens/素养评价/成绩录入/微光发布/登录）。
+     * 教师使用情况全景（批2；批70 扩自然月口径+九类行为）：
+     * 在职教职工 × 行为计数（微光发布/素养评价/扬长课程/荣誉证书/导师谈心/报告生成/AI tokens/成绩录入/登录）。
      * 零活跃教师也返回（领导要看谁在用谁没用）；按总活跃降序。
+     * month=YYYY-MM 按自然月统计；否则按近 days 天。
      */
     @GetMapping("/teacher-usage")
-    public ApiResponse<Map<String, Object>> teacherUsage(@RequestParam(defaultValue = "30") int days) {
+    public ApiResponse<Map<String, Object>> teacherUsage(@RequestParam(defaultValue = "30") int days,
+                                                         @RequestParam(required = false) String month) {
         // 批64：领导层 + 管理员（管理端「教师使用情况」页签同源此接口）
         String role = AuthUtil.current().role();
         if (!"LEADER".equals(role) && !"SECRETARY".equals(role) && !"DIRECTOR".equals(role)
                 && !"ADMIN".equals(role)) {
             throw new BizException(403, "仅领导层或管理员可访问");
         }
-        LocalDateTime since = LocalDateTime.now().minusDays(Math.min(Math.max(days, 1), 365));
+        return ApiResponse.ok(usageData(days, month));
+    }
+
+    /** 教师自查（批70）：本人各板块操作次数，月度/近 N 天同口径 */
+    @GetMapping("/teacher-usage/my")
+    public ApiResponse<Map<String, Object>> myUsage(@RequestParam(defaultValue = "30") int days,
+                                                    @RequestParam(required = false) String month) {
+        var user = AuthUtil.current();
+        if ("PARENT".equals(user.role()) || "GUARD".equals(user.role())) {
+            throw new BizException(403, "仅教职工可访问");
+        }
+        Map<String, Object> data = usageData(days, month);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) data.get("rows");
+        Map<String, Object> mine = rows.stream()
+                .filter(r -> ((Number) r.get("teacherId")).longValue() == user.userId())
+                .findFirst().orElseGet(() -> {
+                    Map<String, Object> zero = new LinkedHashMap<>();
+                    zero.put("teacherId", user.userId());
+                    zero.put("name", user.realName());
+                    zero.put("role", user.role());
+                    zero.put("reports", 0); zero.put("tokens", 0); zero.put("evals", 0);
+                    zero.put("scores", 0); zero.put("moments", 0); zero.put("logins", 0);
+                    zero.put("activities", 0); zero.put("honors", 0); zero.put("talks", 0);
+                    zero.put("lastLogin", null);
+                    return zero;
+                });
+        data.put("rows", List.of(mine));
+        return ApiResponse.ok(data);
+    }
+
+    /** 教师使用情况导出 xlsx（批70；权限同查看，month/days 同口径，五大板块列在前） */
+    @GetMapping("/teacher-usage/export")
+    public ResponseEntity<byte[]> teacherUsageExport(@RequestParam(defaultValue = "30") int days,
+                                                     @RequestParam(required = false) String month) {
+        String role = AuthUtil.current().role();
+        if (!"LEADER".equals(role) && !"SECRETARY".equals(role) && !"DIRECTOR".equals(role)
+                && !"ADMIN".equals(role)) {
+            throw new BizException(403, "仅领导层或管理员可访问");
+        }
+        Map<String, Object> data = usageData(days, month);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) data.get("rows");
+        List<Object[]> out = new ArrayList<>();
+        for (Map<String, Object> r : rows) {
+            out.add(new Object[]{
+                    r.get("name"), ROLE_CN.getOrDefault(String.valueOf(r.get("role")), String.valueOf(r.get("role"))),
+                    r.get("moments"), r.get("evals"), r.get("activities"), r.get("honors"), r.get("talks"),
+                    r.get("reports"), r.get("scores"), r.get("logins"),
+                    r.get("lastLogin") == null ? "" : String.valueOf(r.get("lastLogin")), r.get("tokens")});
+        }
+        byte[] bytes = excel.export("教师操作统计",
+                new String[]{"姓名", "角色", "微光时刻", "学生评价", "扬长课程", "荣誉证书", "导师谈心",
+                        "报告生成", "成绩录入", "登录次数", "最近登录", "AI tokens"}, out);
+        String label = month != null && month.matches("\\d{4}-\\d{2}") ? month : "近" + Math.min(Math.max(days, 1), 365) + "天";
+        String filename = URLEncoder.encode("教师操作统计_" + label + ".xlsx", StandardCharsets.UTF_8);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + filename)
+                .contentType(MediaType.parseMediaType(
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .contentLength(bytes.length)
+                .body(bytes);
+    }
+
+    /** 使用情况聚合本体（teacher-usage / my / export 共用） */
+    private Map<String, Object> usageData(int days, String month) {
+        LocalDateTime since;
+        LocalDateTime until = null;
+        if (month != null && month.matches("\\d{4}-\\d{2}")) {
+            LocalDate first = LocalDate.parse(month + "-01");
+            since = first.atStartOfDay();
+            until = first.plusMonths(1).atStartOfDay();
+        } else {
+            since = LocalDateTime.now().minusDays(Math.min(Math.max(days, 1), 365));
+        }
         List<User> teachers = userMapper.selectList(new LambdaQueryWrapper<User>()
-                .in(User::getRole, "ADMIN", "LEADER", "HEAD_TEACHER", "TEACHER")
+                .in(User::getRole, "ADMIN", "LEADER", "HEAD_TEACHER", "TEACHER", "GRADE_LEADER") // 批70 补级长（谈心/微光/评价均有录入）
                 .eq(User::getStatus, 1)
                 .orderByAsc(User::getId));
         Map<Long, Map<String, Object>> byUser = new java.util.HashMap<>();
@@ -150,19 +229,23 @@ public class LeaderController {
             row.put("role", u.getRole());
             row.put("reports", 0); row.put("tokens", 0); row.put("evals", 0);
             row.put("scores", 0); row.put("moments", 0); row.put("logins", 0);
+            row.put("activities", 0); row.put("honors", 0); row.put("talks", 0);
             row.put("lastLogin", null);
             byUser.put(u.getId(), row);
         }
-        List<Map<String, Object>> ai = usageMapper.aiCount(since);
+        List<Map<String, Object>> ai = usageMapper.aiCount(since, until);
         merge(byUser, ai, "reports");
-        merge(byUser, usageMapper.evalCount(since), "evals");
-        merge(byUser, usageMapper.scoreCount(since), "scores");
-        merge(byUser, usageMapper.momentCount(since), "moments");
+        merge(byUser, usageMapper.evalCount(since, until), "evals");
+        merge(byUser, usageMapper.scoreCount(since, until), "scores");
+        merge(byUser, usageMapper.momentCount(since, until), "moments");
+        merge(byUser, usageMapper.activityCount(since, until), "activities");
+        merge(byUser, usageMapper.talkCount(since, until), "talks");
+        merge(byUser, usageMapper.honorCount(since, until), "honors");
         for (Map<String, Object> r : ai) {   // AI 聚合附带 tokens，一并合并
             Map<String, Object> row = byUser.get(((Number) r.get("userId")).longValue());
             if (row != null) row.put("tokens", ((Number) r.get("tokens")).longValue());
         }
-        for (Map<String, Object> r : usageMapper.loginCount(since)) {
+        for (Map<String, Object> r : usageMapper.loginCount(since, until)) {
             Map<String, Object> row = byUser.get(((Number) r.get("userId")).longValue());
             if (row != null) {
                 row.put("logins", ((Number) r.get("cnt")).longValue());
@@ -183,9 +266,15 @@ public class LeaderController {
         });
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("days", days);
+        data.put("month", month);
         data.put("rows", rows);
-        return ApiResponse.ok(data);
+        return data;
     }
+
+    /** 导出角色中文名（批70） */
+    private static final Map<String, String> ROLE_CN = Map.of(
+            "ADMIN", "管理员", "LEADER", "领导", "SECRETARY", "书记", "DIRECTOR", "主任",
+            "GRADE_LEADER", "级长", "HEAD_TEACHER", "班主任", "TEACHER", "任课教师");
 
     /**
      * 全校成绩汇总（批4）：subjectId 空=总分模式，否则单科模式；rows 分页（默认 100）。
@@ -246,7 +335,8 @@ public class LeaderController {
     /** 总活跃（排序权重）：报告一次是大动作，权重高些 */
     private long active(Map<String, Object> row) {
         return 3 * L(row.get("reports")) + L(row.get("evals")) + L(row.get("scores"))
-                + L(row.get("moments")) + L(row.get("logins"));
+                + L(row.get("moments")) + L(row.get("logins"))
+                + L(row.get("activities")) + L(row.get("talks")) + L(row.get("honors"));
     }
 
     private long L(Object v) {

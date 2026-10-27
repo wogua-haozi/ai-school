@@ -19,6 +19,8 @@
     </div>
 
     <div class="app-card tex-32 cells">
+      <!-- 批70 教师自查：本人当月各板块操作次数（管理员/领导/级长同样可看） -->
+      <van-cell title="我的操作统计" icon="chart-trending-o" is-link @click="$router.push('/usage-my')" />
       <van-cell title="修改手机号" icon="phone-o" is-link @click="phoneOpen = true" />
       <van-cell title="修改密码" icon="lock" is-link @click="pwdOpen = true" />
       <van-cell title="意见反馈" icon="chat-o" is-link @click="$router.push('/feedback')" />
