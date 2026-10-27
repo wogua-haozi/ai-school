@@ -3,6 +3,9 @@
     <h4>考试与录入窗口（批49：成绩管理仅管理员/书记/级长可用；关闭录入窗口后级长不可录，管理员/书记不受限）</h4>
     <el-table :data="exams" size="small">
       <el-table-column prop="name" label="考试" min-width="160" />
+      <el-table-column label="适用年级" width="90" align="center">
+        <template #default="{ row }">{{ row.gradeName ?? '全部' }}</template>
+      </el-table-column>
       <el-table-column prop="termName" label="学期" width="150" />
       <el-table-column label="考试日期" width="110">
         <template #default="{ row }">{{ row.examDate ?? '—' }}</template>

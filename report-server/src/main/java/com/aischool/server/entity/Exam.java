@@ -17,6 +17,7 @@ public class Exam {
     private Long termId;
     private String name;
     private LocalDate examDate;
+    private Long gradeId;
     private BigDecimal classMaxTotal;
     private BigDecimal gradeMaxTotal;
     private Integer entryOpen;

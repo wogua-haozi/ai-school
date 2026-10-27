@@ -38,6 +38,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -129,9 +130,9 @@ public class ScoreService {
         }
     }
 
-    /** 建考试（批49 随上传权限收紧：ADMIN/书记/级长）：一次带齐科目与满分 */
+    /** 建考试（批49 随上传权限收紧：ADMIN/书记/级长；批68 必选适用年级，级长限本年级）：一次带齐科目与满分 */
     public Long createExam(UserPrincipal user, Long termId, String name, LocalDate examDate,
-                           List<SubjectReq> subjects) {
+                           Long gradeId, List<SubjectReq> subjects) {
         requireScoreUpload(user);
         Term term = termMapper.selectById(termId);
         if (term == null) {
@@ -140,6 +141,13 @@ public class ScoreService {
         if (examDate == null || examDate.isBefore(term.getStartDate()) || examDate.isAfter(term.getEndDate())) {
             throw new BizException(400, "考试日期必须落在学期起止日期内");
         }
+        if (gradeMapper.selectById(gradeId) == null) {
+            throw new BizException(404, "年级不存在");
+        }
+        Set<Long> scopeGrades = examScopeGrades(user);
+        if (scopeGrades != null && !scopeGrades.contains(gradeId)) {
+            throw new BizException(403, "只能在自己负责的年级建立考试");
+        }
         if (subjects == null || subjects.isEmpty()) {
             throw new BizException(400, "至少设置一个考试科目");
         }
@@ -147,6 +155,7 @@ public class ScoreService {
         exam.setTermId(termId);
         exam.setName(name);
         exam.setExamDate(examDate);
+        exam.setGradeId(gradeId);
         examMapper.insert(exam);
         for (SubjectReq s : subjects) {
             if (subjectMapper.selectById(s.getSubjectId()) == null) {
@@ -180,21 +189,29 @@ public class ScoreService {
         examMapper.deleteById(examId);
     }
 
-    /** 考试列表（附学期名与科目数；批49 限成绩可见角色；批63 班主任/科任只读入口同样可见考试） */
+    /** 考试列表（附学期名与科目数；批49 限成绩可见角色；批63 班主任/科任只读入口同样可见考试；
+     *  批68 附年级并按查看者数据域过滤：级长/班主任/科任=可见班级所在年级 ∪ 存量(NULL)考试，管理面角色全量） */
     public List<Map<String, Object>> examList(UserPrincipal user) {
         requireScoreAccess(user);
+        Set<Long> scopeGrades = examScopeGrades(user);
         List<Exam> exams = examMapper.selectList(new LambdaQueryWrapper<Exam>()
                 .orderByDesc(Exam::getExamDate).orderByDesc(Exam::getId));
         Map<Long, String> termNames = termMapper.selectList(null).stream()
                 .collect(Collectors.toMap(Term::getId, Term::getName));
+        Map<Long, String> gradeNames = gradeMapper.selectList(null).stream()
+                .collect(Collectors.toMap(Grade::getId, Grade::getName));
         Map<Long, Long> subjectCounts = examSubjectMapper.selectList(null).stream()
                 .collect(Collectors.groupingBy(ExamSubject::getExamId, Collectors.counting()));
-        return exams.stream().map(e -> {
+        return exams.stream()
+                .filter(e -> scopeGrades == null || e.getGradeId() == null || scopeGrades.contains(e.getGradeId()))
+                .map(e -> {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("id", e.getId());
             m.put("termId", e.getTermId());
             m.put("termName", termNames.get(e.getTermId()));
             m.put("name", e.getName());
+            m.put("gradeId", e.getGradeId());
+            m.put("gradeName", gradeNames.get(e.getGradeId()));
             m.put("examDate", e.getExamDate());
             m.put("classMaxTotal", e.getClassMaxTotal());
             m.put("gradeMaxTotal", e.getGradeMaxTotal());
@@ -210,7 +227,7 @@ public class ScoreService {
     public List<Map<String, Object>> subjectContext(UserPrincipal user, Long examId, Long classId, Long gradeId) {
         requireScoreAccess(user);
         targetClassIds(user, classId, gradeId); // 班级存在性/数据域校验
-        requireExam(examId);
+        checkExamGrade(requireExam(examId), classId, gradeId);
         boolean editable = classId != null ? canUpload(user, examId, classId) : canUploadRole(user, examId);
         Map<Long, String> subjectNames = subjectMapper.selectList(null).stream()
                 .collect(Collectors.toMap(Subject::getId, Subject::getName));
@@ -233,6 +250,7 @@ public class ScoreService {
      *  排名仅管理面可见（canSeeRank）：班主任/科任只读入口 classRank/gradeRank 服务端一律置 null */
     public Map<String, Object> listScores(UserPrincipal user, Long examId, Long subjectId, Long classId, Long gradeId) {
         requireScoreAccess(user);
+        checkExamGrade(requireExam(examId), classId, gradeId);
         List<Long> classIds = targetClassIds(user, classId, gradeId);
         boolean totalMode = subjectId == null;
         List<ExamSubject> examSubjects = examSubjectMapper.selectList(new LambdaQueryWrapper<ExamSubject>()
@@ -518,6 +536,7 @@ public class ScoreService {
     public Map<String, Object> importExcel(UserPrincipal user, Long examId, Long classId, MultipartFile file) {
         requireScoreUpload(user);
         checkClassVisible(user, classId);
+        checkExamGrade(requireExam(examId), classId, null);
         if ("GRADE_LEADER".equals(user.role()) && !examOpen(requireExam(examId))) {
             throw new BizException(403, "该考试录入已关闭");
         }
@@ -1019,6 +1038,36 @@ public class ScoreService {
     private List<Student> roster(Long classId) {
         return studentMapper.selectList(new LambdaQueryWrapper<Student>()
                 .eq(Student::getClassId, classId).orderByAsc(Student::getStudentNo));
+    }
+
+    /** 批68 考试年级域：级长/班主任/科任=可见班级所在年级集合（空=无任何班级）；管理面角色返回 null=不限 */
+    private Set<Long> examScopeGrades(UserPrincipal user) {
+        String role = user.role();
+        if (!"GRADE_LEADER".equals(role) && !"HEAD_TEACHER".equals(role) && !"TEACHER".equals(role)) {
+            return null;
+        }
+        List<Long> visible = dataScope.visibleClassIds(user);
+        if (visible == null || visible.isEmpty()) {
+            return Set.of();
+        }
+        return clazzMapper.selectBatchIds(visible).stream()
+                .map(Clazz::getGradeId).filter(java.util.Objects::nonNull)
+                .collect(Collectors.toSet());
+    }
+
+    /** 批68 考试↔年级一致护栏：考试绑定年级后，他年级班级/年级的录入查看导入一律 403；存量(NULL)考试不受限 */
+    private void checkExamGrade(Exam exam, Long classId, Long gradeId) {
+        if (exam.getGradeId() == null) {
+            return;
+        }
+        Long target = gradeId;
+        if (target == null && classId != null) {
+            Clazz c = clazzMapper.selectById(classId);
+            target = c == null ? null : c.getGradeId();
+        }
+        if (target == null || !target.equals(exam.getGradeId())) {
+            throw new BizException(403, "该考试属于其他年级，不能跨年级使用");
+        }
     }
 
     private Exam requireExam(Long examId) {

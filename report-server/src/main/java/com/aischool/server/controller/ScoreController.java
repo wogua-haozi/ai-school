@@ -36,6 +36,8 @@ public class ScoreController {
     public static class ExamReq {
         @NotNull(message = "termId 不能为空")
         private Long termId;
+        @NotNull(message = "gradeId 不能为空（批68：建考试必选适用年级）")
+        private Long gradeId;
         @NotBlank(message = "name 不能为空")
         private String name;
         @NotNull(message = "examDate 不能为空")
@@ -66,7 +68,7 @@ public class ScoreController {
     @PostMapping("/exam")
     public ApiResponse<Map<String, Object>> createExam(@Validated @RequestBody ExamReq req) {
         Long id = scoreService.createExam(AuthUtil.current(), req.getTermId(), req.getName(),
-                req.getExamDate(), req.getSubjects());
+                req.getExamDate(), req.getGradeId(), req.getSubjects());
         return ApiResponse.ok(Map.of("examId", id));
     }
 

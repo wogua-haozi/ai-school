@@ -5,7 +5,7 @@
     <div class="toolbar">
       <el-select v-model="examId" placeholder="考试" style="min-width: 200px" @change="onExamChange">
         <el-option v-for="e in exams" :key="e.id"
-          :label="`${e.name}（${e.termName}）${e.entryOpen === false ? ' · 录入已关闭' : ''}`" :value="e.id" />
+          :label="`${e.name}（${e.gradeName ?? '全部年级'} · ${e.termName}）${e.entryOpen === false ? ' · 录入已关闭' : ''}`" :value="e.id" />
       </el-select>
       <el-select v-model="gradeId" placeholder="年级" style="min-width: 140px" @change="loadSubjects">
         <el-option v-for="g in grades" :key="g.id" :label="g.name" :value="g.id" />
@@ -14,7 +14,7 @@
         <el-option v-for="s in subjectOptions" :key="s.subjectId" :label="s.name" :value="s.subjectId" />
       </el-select>
       <!-- 批63：建/改考试=可传可改者（管理员/书记/级长）；汇总页=排名可见角色（领导驾驶舱另有入口） -->
-      <el-button v-if="auth.scoreUpload" type="primary" @click="examDialog = true">新建考试</el-button>
+      <el-button v-if="auth.scoreUpload" type="primary" @click="openExamDialog">新建考试</el-button>
       <el-button v-if="auth.scoreUpload && examId" @click="openEditExam">修改考试</el-button>
       <el-button v-if="auth.canSeeRank && auth.role !== 'LEADER'" @click="$router.push('/l/scores')">全校汇总</el-button>
       <!-- 批40e 撤回：删误建考试（含其下全部成绩）；批49=管理员/书记 -->
@@ -75,6 +75,11 @@
 
     <el-dialog v-model="examDialog" title="新建考试" width="560px">
       <el-form label-width="90px">
+        <el-form-item label="适用年级">
+          <el-select v-model="newExam.gradeId" placeholder="选择年级（批68：考试只作用于所选年级）" style="width: 100%">
+            <el-option v-for="g in grades" :key="g.id" :label="g.name" :value="g.id" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="学期">
           <el-select v-model="newExam.termId" style="width: 100%">
             <el-option v-for="t in terms" :key="t.id" :label="t.name" :value="t.id" />
@@ -231,6 +236,7 @@ async function init() {
   const mine = new Set(cs.map((c) => c.gradeId).filter(Boolean))
   grades.value = gs.filter((g) => mine.has(g.id)).map((g) => ({ id: g.id, name: g.name }))
   newExam.value.termId = ts.find((t: any) => t.isCurrent === 1)?.id ?? ts[0]?.id
+  newExam.value.gradeId = grades.value[0]?.id // 批68 默认当前年级（级长即本年级），弹窗内可改
   examId.value = ex[0]?.id
   if (grades.value.length) {
     gradeId.value = grades.value[0].id
@@ -332,12 +338,23 @@ async function save() {
   }
 }
 
+/** 批68：开弹窗默认带当前查看年级（级长=本年级锁定，管理面=当前选中） */
+function openExamDialog() {
+  newExam.value.gradeId = gradeId.value ?? grades.value[0]?.id
+  examDialog.value = true
+}
+
 async function createExam() {
+  if (!newExam.value.gradeId) {
+    ElMessage.warning('请选择适用年级')
+    return
+  }
   creating.value = true
   try {
     await api('/api/score/exam', {
       method: 'POST',
       json: {
+        gradeId: newExam.value.gradeId,
         termId: newExam.value.termId,
         name: newExam.value.name,
         examDate: newExam.value.examDate,
