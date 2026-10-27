@@ -40,6 +40,7 @@
       </el-table-column>
       <el-table-column label="操作" min-width="250">
         <template #default="{ row }">
+          <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
           <el-button link type="primary" @click="openBindings(row)">绑定管理</el-button>
           <el-button link @click="resetPwd(row)">重置密码</el-button>
           <el-button link :type="row.status === 1 ? 'warning' : 'success'" @click="toggleStatus(row)">
@@ -70,6 +71,23 @@
       <template #footer>
         <el-button @click="dialog = false">取消</el-button>
         <el-button type="primary" @click="save">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 编辑家长（批69：简单修改自助，改手机号同步登录账号） -->
+    <el-dialog v-model="editDialog" title="编辑家长" width="460px">
+      <el-form label-width="90px">
+        <el-form-item label="姓名">
+          <el-input v-model="editForm.realName" />
+        </el-form-item>
+        <el-form-item label="手机">
+          <el-input v-model="editForm.phone" maxlength="11" />
+        </el-form-item>
+      </el-form>
+      <div class="dlg-tip">当前登录账号：{{ editForm.username }}。若账号即原手机号，改手机号后账号会同步改为新号码；密码不变。</div>
+      <template #footer>
+        <el-button @click="editDialog = false">取消</el-button>
+        <el-button type="primary" @click="saveEdit">保存</el-button>
       </template>
     </el-dialog>
 
@@ -181,6 +199,24 @@ const dialog = ref(false)
 const form = ref<any>({})
 
 const genDialog = ref(false)
+
+/* 编辑家长（批69）：姓名/手机号简单修改自助 */
+const editDialog = ref(false)
+const editForm = ref<any>({})
+
+function openEdit(row: any) {
+  editForm.value = { id: row.id, username: row.username, realName: row.realName, phone: row.phone ?? '' }
+  editDialog.value = true
+}
+
+async function saveEdit() {
+  const d = await api<{ usernameSynced: boolean }>(`/api/admin/parent/${editForm.value.id}`, {
+    method: 'PUT', json: { realName: editForm.value.realName, phone: editForm.value.phone },
+  })
+  ElMessage.success(d.usernameSynced ? '已保存，登录账号已同步改为新手机号' : '已保存')
+  editDialog.value = false
+  await load()
+}
 const genClassId = ref<number>()
 const genResult = ref<any>(null)
 const generating = ref(false)

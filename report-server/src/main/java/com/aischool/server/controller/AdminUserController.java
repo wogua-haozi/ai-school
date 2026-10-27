@@ -405,6 +405,14 @@ public class AdminUserController {
                 throw new BizException(400, "登录名已存在");
             }
         }
+        // 批69 手机号查重：与他账号手机号/登录名撞号会挡掉家长以该号注册（registerParent 全局查手机号），先拦住
+        String newPhone = req.getPhone() == null ? u.getPhone() : req.getPhone().trim();
+        if (newPhone != null && !newPhone.isBlank() && !newPhone.equals(u.getPhone())
+                && userMapper.selectCount(new LambdaQueryWrapper<User>()
+                        .ne(User::getId, id)
+                        .and(q -> q.eq(User::getPhone, newPhone).or().eq(User::getUsername, newPhone))) > 0) {
+            throw new BizException(400, "该手机号已被其他账号使用");
+        }
         // 教师原地升入 ADMIN/LEADER 走双人审批（批2-5）：本次不改角色，另一名管理员/领导通过后才生效。
         // 已是 ADMIN/LEADER 互转（已过一次审批）与降级不触发。
         boolean upgradeApproval = RoleApprovalService.needsApproval(newRole)

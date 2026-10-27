@@ -266,6 +266,35 @@ public class AdminParentController {
         return ApiResponse.ok();
     }
 
+    /** 编辑基础信息（批69）：改手机号时若账号=原手机号则账号同步改——按班生成按 username=手机号 去重，须保持一致 */
+    @PutMapping("/{id}")
+    public ApiResponse<Map<String, Object>> edit(@PathVariable Long id, @RequestBody EditReq req) {
+        checkAdmin();
+        User u = findParent(id);
+        String newPhone = req.getPhone() != null && !req.getPhone().isBlank()
+                ? req.getPhone().trim() : u.getPhone();
+        String newName = req.getRealName() == null || req.getRealName().isBlank()
+                ? u.getRealName() : req.getRealName().trim();
+        boolean phoneChanged = newPhone == null ? u.getPhone() != null : !newPhone.equals(u.getPhone());
+        if (phoneChanged) {
+            if (!newPhone.matches("^1\\d{10}$")) {
+                throw new BizException(400, "手机号格式不正确");
+            }
+            if (userMapper.selectCount(new LambdaQueryWrapper<User>()
+                    .ne(User::getId, id)
+                    .and(q -> q.eq(User::getPhone, newPhone).or().eq(User::getUsername, newPhone))) > 0) {
+                throw new BizException(400, "该手机号已被使用");
+            }
+        }
+        boolean syncUsername = phoneChanged && u.getPhone() != null && u.getPhone().equals(u.getUsername());
+        userMapper.update(null, new LambdaUpdateWrapper<User>()
+                .eq(User::getId, id)
+                .set(User::getRealName, newName)
+                .set(User::getPhone, newPhone)
+                .set(syncUsername, User::getUsername, newPhone));
+        return ApiResponse.ok(Map.of("usernameSynced", syncUsername));
+    }
+
     /** 删除账号（连带清绑定；家长无业务数据引用，可直接删） */
     @DeleteMapping("/{id}")
     public ApiResponse<Void> delete(@PathVariable Long id) {
@@ -410,6 +439,12 @@ public class AdminParentController {
     public static class GenerateReq {
         @NotNull(message = "classId 不能为空")
         private Long classId;
+    }
+
+    @Data
+    public static class EditReq {
+        private String realName;
+        private String phone;
     }
 
     @Data
