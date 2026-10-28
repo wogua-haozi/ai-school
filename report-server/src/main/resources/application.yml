@@ -24,8 +24,8 @@ spring:
     locations: classpath:db/migration
   servlet:
     multipart:
-      max-file-size: 10MB   # 荣誉证书上传上限
-      max-request-size: 11MB
+      max-file-size: 10MB   # 单文件：荣誉证书/微光单张照片均 10MB（各端点自行校验）
+      max-request-size: 95MB   # 批72e 微光九图批量上传：9×10MB，超此总量的请求在进控制器前即被拒
   jackson:
     # 渲染契约要求保留 null（incomeTop5 缺位 value:null 等），不能用 non_null
     default-property-inclusion: always

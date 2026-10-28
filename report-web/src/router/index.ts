@@ -87,6 +87,8 @@ const router = createRouter({
     { path: '/p/content/:id', component: () => import('../views/parent/ContentDetailView.vue'), meta: { layout: 'psub', title: '内容详情' } },
     // 家长微光时刻（批2-3 方案A）：拍照仅进孩子成长档案（家长+班主任可见）
     { path: '/p/moments', component: () => import('../views/parent/ParentMomentView.vue'), meta: { layout: 'psub', title: '微光时刻' } },
+    // 扬长课程（批72d 家长只读）：课程列表+封面，视频为外链点击跳转（平台播放器承接）
+    { path: '/p/activity', component: () => import('../views/parent/ParentActivityView.vue'), meta: { layout: 'psub', title: '扬长课程' } },
     // 成长档案（批14 生命周期）：在校全期事件流+总览
     { path: '/p/archive/:id', component: () => import('../views/parent/ParentArchiveView.vue'), meta: { layout: 'psub', title: '成长档案' } },
     { path: '/p/honor', component: () => import('../views/parent/ParentHonorView.vue'), meta: { layout: 'psub', title: '荣誉证书' } },

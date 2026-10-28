@@ -140,6 +140,7 @@ import GoodsTab from '../components/admin/GoodsTab.vue'
 import RepairTab from '../components/admin/RepairTab.vue'
 import VenueTab from '../components/admin/VenueTab.vue'
 import TalkTab from '../components/admin/TalkTab.vue'
+import MomentTab from '../components/admin/MomentTab.vue'
 import FootprintTab from '../components/admin/FootprintTab.vue'
 import UsageTab from '../components/admin/UsageTab.vue'
 import SchoolYearTab from '../components/admin/SchoolYearTab.vue'
@@ -197,6 +198,7 @@ const TABS: Record<string, { label: string; comp: any; icon: any }> = {
   repair: { label: '报修处理', comp: markRaw(RepairTab), icon: Tools },
   venue: { label: '场地管理', comp: markRaw(VenueTab), icon: OfficeBuilding },
   talk: { label: '导师谈心', comp: markRaw(TalkTab), icon: ChatLineRound },
+  moment: { label: '微光时刻', comp: markRaw(MomentTab), icon: Picture },
   footprint: { label: '教师足迹', comp: markRaw(FootprintTab), icon: Medal },
 }
 /* 批37 IA 重组：30 页签按职能分 7 组（桌面侧栏=7 段；App 窄屏=两级「分组落地→组内页签」）；
@@ -204,7 +206,7 @@ const TABS: Record<string, { label: string; comp: any; icon: any }> = {
 const groups = [
   { key: 'people', label: '人员账号', icon: User, items: ['teacher', 'usage', 'parent', 'roleRequest', 'teacherProfile'] },
   { key: 'edu', label: '教学教务', icon: School, items: ['org', 'student', 'term', 'schoolYear', 'exam', 'score', 'duty', 'template'] },
-  { key: 'moral', label: '德育激励', icon: Medal, items: ['civility', 'indicator', 'shop', 'talk', 'footprint'] },
+  { key: 'moral', label: '德育激励', icon: Medal, items: ['civility', 'indicator', 'shop', 'talk', 'moment', 'footprint'] },
   { key: 'logi', label: '总务后勤', icon: OfficeBuilding, items: ['goods', 'repair', 'venue', 'archive'] },
   { key: 'appr', label: '审批与反馈', icon: Stamp, items: ['oa', 'feedback'] },
   { key: 'pub', label: '内容发布', icon: Promotion, items: ['content', 'appRelease', 'asset'] },

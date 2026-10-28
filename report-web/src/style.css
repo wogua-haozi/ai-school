@@ -269,10 +269,10 @@ body {
   position: relative; margin: 0 -14px; padding: calc(14px + var(--sat)) 20px 52px;
   background: var(--app-gradient); color: #fff; overflow: hidden;
 }
-.app-hero::before {                 /* 虚化校园底图：低透明度融进渐变，保住文字对比度 */
+.app-hero::before {                 /* 虚化校园底图：低透明度融进渐变，保住文字对比度（批72c 28%→20% 调淡） */
   content: ''; position: absolute; inset: -40px;
   background: var(--campus-bg, url('/campus-bg.jpg')) center 42%/cover no-repeat;
-  opacity: .28; filter: blur(9px) saturate(1.15); pointer-events: none;
+  opacity: .20; filter: blur(9px) saturate(1.15); pointer-events: none;
 }
 .app-hero > * { position: relative; }
 /* hero 右上光斑装饰（mark 页右上是校徽水印，排除以免叠影）；C 金光斑 */
@@ -319,9 +319,10 @@ body {
 .app-foot::before, .app-foot::after { content: ''; flex: 1; max-width: 56px; border-top: 1px solid #E3DCCB; }
 
 /* 卡片虚化底纹（批52③）：37 张学校介绍照片全池轮换，同页面不重复（静态位按页错开、
-   轮换位续在本页静态位之后）；上覆白纱（74%），文字永远清晰；底图放大到 190% 取中心 */
+   轮换位续在本页静态位之后）；上覆白纱，文字永远清晰；底图放大到 190% 取中心。
+   批72c 白纱 74%→88%：甲方反馈多处卡面文字被底纹压得看不清，全局调淡 */
 .app-card[class*='tex-'] {
-  background-image: linear-gradient(rgba(255,255,255,.74), rgba(255,255,255,.74)), var(--tex);
+  background-image: linear-gradient(rgba(255,255,255,.88), rgba(255,255,255,.88)), var(--tex);
   background-size: cover, 190%;
   background-position: center;
 }
@@ -362,9 +363,9 @@ body {
 .tex-35 { --tex: url('/textures/tex-35.jpg'); }  /* 行健楼 */
 .tex-36 { --tex: url('/textures/tex-36.jpg'); }  /* 图书馆 */
 .tex-37 { --tex: url('/textures/tex-37.jpg'); }  /* 饭堂 */
-/* 暗图槽位（亮度<118）多盖一层白纱，保文字对比（沿用原黑板图先例） */
+/* 暗图槽位（亮度<118）多盖一层白纱，保文字对比（沿用原黑板图先例；批72c 随全局调淡 85%→94%） */
 .app-card.tex-02, .app-card.tex-04, .app-card.tex-07, .app-card.tex-08, .app-card.tex-12, .app-card.tex-13, .app-card.tex-15, .app-card.tex-25, .app-card.tex-34 {
-  background-image: linear-gradient(rgba(255,255,255,.85), rgba(255,255,255,.85)), var(--tex);
+  background-image: linear-gradient(rgba(255,255,255,.94), rgba(255,255,255,.94)), var(--tex);
 }
 
 /* 区块标题（图1「快捷功能」「最近动态」式小标题）：竖条 + 尾部虚线延伸 */
@@ -392,8 +393,8 @@ body {
 }
 .app-sub:not(.admin) .el-card {
   border-top: 3px solid #EAE5DA;
-  background-image: linear-gradient(rgba(255,255,255,.92), rgba(255,255,255,.92)),
-    url('/textures/tex-22.jpg');   /* 浅底纹（机器人操场，37 张中最亮）：表格可读性优先 */
+  background-image: linear-gradient(rgba(255,255,255,.95), rgba(255,255,255,.95)),
+    url('/textures/tex-22.jpg');   /* 浅底纹（机器人操场，37 张中最亮）：表格可读性优先；批72c 92%→95% */
   background-size: cover, 190%;
 }
 /* 成绩单从学生详情进来的该生行高亮（红系软底+左竖条锚点） */

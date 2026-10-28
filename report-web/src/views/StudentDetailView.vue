@@ -31,7 +31,7 @@
           <template v-if="m.photoUrl">
             <MomentPhoto :url="m.photoUrl" @tap="(src) => previewMoments(m, src)" />
             <span v-if="(m.photoUrls?.length ?? 0) > 1" class="mo-n">{{ m.photoUrls?.length }}张</span>
-            <span class="mo-tag">{{ m.sceneTag }}</span>
+            <span v-for="tg in m.sceneTag.split('/')" :key="tg" class="mo-tag">{{ tg }}</span>
           </template>
           <!-- 加分同步微光（无照片）：文字卡 -->
           <div v-else class="mo-text">

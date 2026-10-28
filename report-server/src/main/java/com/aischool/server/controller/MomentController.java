@@ -34,11 +34,11 @@ public class MomentController {
     private final MomentMapper momentMapper;
     private final PdfStoreService pdfStore;
 
-    /** 创建（multipart：photo + classId + studentIds + sceneTag + note） */
+    /** 创建（multipart：photo + classId + studentIds + sceneTag×N + note；批71 多选，单值旧客户端兼容为单元素） */
     @PostMapping
     public ApiResponse<Map<String, Object>> create(@RequestParam Long classId,
                                                    @RequestParam(required = false) List<Long> studentIds,
-                                                   @RequestParam String sceneTag,
+                                                   @RequestParam List<String> sceneTag,
                                                    @RequestParam(required = false) String note,
                                                    @RequestParam("photos") List<MultipartFile> photos) {
         return ApiResponse.ok(momentService.create(AuthUtil.current(), classId, studentIds, sceneTag, note, photos));

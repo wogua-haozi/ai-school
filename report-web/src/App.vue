@@ -156,10 +156,10 @@ watch(() => auth.token, (t) => {
   background: var(--app-gradient); color: #fff; overflow: hidden;
   border-bottom: 1px solid rgba(201,138,45,.4);   /* 校门金一线 */
 }
-.sub-nav::before {                 /* 虚化校园底图（同 .app-hero） */
+.sub-nav::before {                 /* 虚化校园底图（同 .app-hero；批72c 24%→17% 调淡） */
   content: ''; position: absolute; inset: -30px;
   background: var(--campus-bg, url('/campus-bg.jpg')) center 42%/cover no-repeat;
-  opacity: .24; filter: blur(8px) saturate(1.15); pointer-events: none;
+  opacity: .17; filter: blur(8px) saturate(1.15); pointer-events: none;
 }
 .sub-nav::after {                  /* 右上光斑（同 hero 装饰语言）；C 金光斑 */
   content: ''; position: absolute; top: -60px; right: -45px; width: 190px; height: 190px;
@@ -193,10 +193,10 @@ watch(() => auth.token, (t) => {
   background: var(--shine-gradient); color: #fff; overflow: hidden;
   border-bottom: 1px solid var(--shine-gold);
 }
-.shine-nav::before {                 /* 虚化校园底图（同 .app-hero） */
+.shine-nav::before {                 /* 虚化校园底图（同 .app-hero；批72c 24%→17% 调淡） */
   content: ''; position: absolute; inset: -30px;
   background: var(--campus-bg, url('/campus-bg.jpg')) center 42%/cover no-repeat;
-  opacity: .24; filter: blur(8px) saturate(1.15); pointer-events: none;
+  opacity: .17; filter: blur(8px) saturate(1.15); pointer-events: none;
 }
 .shine-nav::after {                  /* 右上光斑（C 金） */
   content: ''; position: absolute; top: -60px; right: -45px; width: 190px; height: 190px;

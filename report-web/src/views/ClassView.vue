@@ -42,7 +42,7 @@
         <div v-for="m in moments" :key="m.id" class="mo-card">
           <MomentPhoto :url="m.photoUrl" @tap="(src) => openMoment(m, src)" />
           <span v-if="(m.photoUrls?.length ?? 0) > 1" class="mo-n">{{ m.photoUrls?.length }}张</span>
-          <span class="mo-tag">{{ m.sceneTag }}</span>
+          <span v-for="tg in m.sceneTag.split('/')" :key="tg" class="mo-tag">{{ tg }}</span>
         </div>
       </div>
       <button v-else class="mo-empty" type="button"

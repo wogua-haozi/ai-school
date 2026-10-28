@@ -16,16 +16,16 @@
       <div v-for="m in filtered" :key="m.id" class="cell app-card" :data-id="m.id">
         <div class="ph">
           <MomentPhotos :urls="m.photoUrls ?? [m.photoUrl]" @tap="onPhotoTap" />
-          <span class="p-tag">{{ m.sceneTag }}</span>
+          <span v-for="tg in m.sceneTag.split('/')" :key="tg" class="p-tag">{{ tg }}</span>
         </div>
         <div class="info">
           <p class="names" @click="goStudent(m)">{{ studentNames(m) }}</p>
           <p class="meta">{{ fmtDate(m.createTime) }}<template v-if="m.teacherName"> · {{ m.teacherName }}</template></p>
           <p v-if="m.note" class="note">{{ m.note }}</p>
-          <!-- 批65：误操作自救——本人可删可改文字（不限时；信号差重复上传的场景） -->
+          <!-- 批65：误操作自救——本人可改文字（不限时）；批72e 删除收紧为发布 30 分钟内 -->
           <div v-if="isMine(m)" class="ops">
             <button class="op" type="button" @click="openEdit(m)">编辑</button>
-            <button class="op danger" type="button" @click="del(m)">删除</button>
+            <button v-if="within30(m)" class="op danger" type="button" @click="del(m)">删除</button>
           </div>
         </div>
       </div>
@@ -88,10 +88,10 @@ const clsOpen = ref(false)
 const refreshing = ref(false)
 const photoPreview = ref<InstanceType<typeof PhotoPreview>>()
 
-const tags = computed(() => sceneTags.value.filter((t) => moments.value.some((m) => m.sceneTag === t)))
+const tags = computed(() => sceneTags.value.filter((t) => moments.value.some((m) => m.sceneTag.split('/').includes(t))))
 const curClassName = computed(() => classes.value.find((c) => c.id === classId.value)?.name)
 const clsColumns = computed(() => classes.value.map((c) => ({ text: c.name, value: c.id })))
-const filtered = computed(() => (tag.value ? moments.value.filter((m) => m.sceneTag === tag.value) : moments.value))
+const filtered = computed(() => (tag.value ? moments.value.filter((m) => m.sceneTag.split('/').includes(tag.value)) : moments.value))
 
 /** Vant4 confirm 载荷：{selectedValues, selectedOptions, selectedIndexes}，取值走 selectedOptions */
 function onCls(ev: { selectedOptions?: { value: number }[] }) {
@@ -146,6 +146,11 @@ function goCam() {
 const myId = ref<number>()
 function isMine(m: MomentItem) {
   return m.teacherId != null && m.teacherId === myId.value
+}
+
+/** 批72e：本人删除限发布 30 分钟内（超时按钮隐藏；后端同校验兜底，管理员走管理端删除） */
+function within30(m: MomentItem) {
+  return !!m.createTime && Date.now() - new Date(m.createTime).getTime() <= 30 * 60 * 1000
 }
 
 const editOpen = ref(false)

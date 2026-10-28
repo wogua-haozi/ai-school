@@ -43,6 +43,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -443,7 +444,7 @@ public class ParentController {
         return ApiResponse.ok(rows);
     }
 
-    /** 删除微光：仅本人上传的（家长删自己的；教师上传的家长不可删） */
+    /** 删除微光：仅本人上传的（家长删自己的；教师上传的家长不可删）；批72e 同教师口径限 30 分钟 */
     @DeleteMapping("/moment/{id}")
     public ApiResponse<Void> deleteMoment(@PathVariable Long id) {
         checkParent();
@@ -454,10 +455,18 @@ public class ParentController {
         if (!"PARENT".equals(m.getSource()) || !m.getTeacherId().equals(AuthUtil.current().userId())) {
             throw new BizException(403, "仅可删除自己上传的微光");
         }
+        if (m.getCreateTime().isBefore(LocalDateTime.now().minusMinutes(30))) {
+            throw new BizException(403, "自己的微光仅发布 30 分钟内可删除，超时请联系班主任处理");
+        }
         momentMapper.deleteById(id);
         momentStudentMapper.delete(new LambdaQueryWrapper<MomentStudent>()
                 .eq(MomentStudent::getMomentId, id));
-        pdfStore.delete(m.getPhotoUrl());
+        // 批62 多图：photoUrl 为逗号分隔多对象，逐个删（此前整串传删等于漏删）
+        if (m.getPhotoUrl() != null) {
+            for (String objectName : m.getPhotoUrl().split(",")) {
+                pdfStore.delete(objectName);
+            }
+        }
         return ApiResponse.ok();
     }
 

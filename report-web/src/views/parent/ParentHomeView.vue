@@ -98,6 +98,8 @@ const grids = computed(() => [
   { name: '荣誉证书', icon: 'medal-o', to: '/p/honor', bg: '#EAB308' },
   { name: '成长报告', icon: 'description', to: '/p/report', bg: '#14B8A6' },
   { name: '请假记录', icon: 'clock-o', to: '/p/leave', bg: '#DC2626' },
+  // 批72d：家长只读扬长课程（视频为外链跳转观看）
+  { name: '扬长课程', icon: 'flag-o', to: '/p/activity', bg: '#7C3AED' },
 ])
 
 function fmtTime(t?: string) {

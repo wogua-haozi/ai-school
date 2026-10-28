@@ -25,6 +25,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -53,10 +54,10 @@ public class MomentService {
     private final CoinLedgerService coinLedger;
 
     /** 创建一条微光（批62 多图）：照片存 MinIO（moment/{classId}/{uuid}.{ext}，1~9 张，
-        photo_url 逗号分隔）+ 主表 + 学生关联 */
+        photo_url 逗号分隔）+ 主表 + 学生关联。批71 sceneTag 多选，/ 分隔存储 */
     @Transactional
     public Map<String, Object> create(UserPrincipal user, Long classId, List<Long> studentIds,
-                                      String sceneTag, String note, List<MultipartFile> photos) {
+                                      List<String> sceneTag, String note, List<MultipartFile> photos) {
         List<MultipartFile> valid = photos == null ? List.of()
                 : photos.stream().filter(p -> p != null && !p.isEmpty()).toList();
         if (valid.isEmpty()) {
@@ -76,8 +77,16 @@ public class MomentService {
                 throw new BizException(400, "仅支持 jpg/jpeg/png 格式");
             }
         }
-        if (sceneTag == null || sceneTag.isBlank()) {
+        List<String> tags = sceneTag == null ? List.of() : sceneTag.stream()
+                .filter(t -> t != null && !t.isBlank()).map(String::trim).distinct().toList();
+        if (tags.isEmpty()) {
             throw new BizException(400, "请选择场景标签");
+        }
+        if (tags.size() > 5) {
+            throw new BizException(400, "场景标签最多选 5 个");
+        }
+        if (tags.stream().anyMatch(t -> t.length() > 32)) {
+            throw new BizException(400, "单个标签不能超过 32 字");
         }
         if (note != null && note.length() > 500) {
             throw new BizException(400, "备注不能超过 500 字");
@@ -114,7 +123,7 @@ public class MomentService {
         m.setTeacherId(user.userId());
         m.setClassId(classId);
         m.setPhotoUrl(String.join(",", objectNames));
-        m.setSceneTag(sceneTag.trim());
+        m.setSceneTag(String.join("/", tags));
         m.setNote(note == null ? null : note.trim());
         m.setSource("TEACHER");
         momentMapper.insert(m);
@@ -168,6 +177,9 @@ public class MomentService {
         String n = name.trim();
         if (n.length() > 32) {
             throw new BizException(400, "标签名不能超过 32 字");
+        }
+        if (n.contains("/")) {
+            throw new BizException(400, "标签名不能包含 /");
         }
         if (momentTagMapper.selectCount(new LambdaQueryWrapper<MomentTag>()
                 .eq(MomentTag::getName, n)) > 0) {
@@ -228,8 +240,14 @@ public class MomentService {
         if (m == null) {
             throw new BizException(404, "微光记录不存在");
         }
-        if (!m.getTeacherId().equals(user.userId()) && !"ADMIN".equals(user.role())) {
+        boolean self = m.getTeacherId().equals(user.userId());
+        if (!self && !"ADMIN".equals(user.role())) {
             throw new BizException(403, "仅记录教师本人或管理员可删除");
+        }
+        // 批72e：本人删除限发布 30 分钟内（误发/误重可撤，过时不改历史）；管理员删任何记录不限时
+        if (self && !"ADMIN".equals(user.role())
+                && m.getCreateTime().isBefore(LocalDateTime.now().minusMinutes(30))) {
+            throw new BizException(403, "自己的微光仅发布 30 分钟内可删除，超时请联系管理员处理");
         }
         List<Long> studentIds = momentStudentMapper.selectList(new LambdaQueryWrapper<MomentStudent>()
                         .eq(MomentStudent::getMomentId, id))
@@ -277,8 +295,12 @@ public class MomentService {
         if (!t.getCreateUserId().equals(user.userId()) && !"ADMIN".equals(user.role())) {
             throw new BizException(403, "仅建标签教师本人或管理员可删除");
         }
+        // 批71 多选存储（/ 分隔）：独立成条、居首、居中、居尾都算被引用
         Long used = momentMapper.selectCount(new LambdaQueryWrapper<Moment>()
-                .eq(Moment::getSceneTag, t.getName()));
+                .and(w -> w.eq(Moment::getSceneTag, t.getName())
+                        .or().likeRight(Moment::getSceneTag, t.getName() + "/")
+                        .or().like(Moment::getSceneTag, "/" + t.getName() + "/")
+                        .or().likeLeft(Moment::getSceneTag, "/" + t.getName())));
         if (used != null && used > 0) {
             throw new BizException(400, "该标签已被 " + used + " 条微光使用，不可删除");
         }

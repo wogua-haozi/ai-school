@@ -36,11 +36,15 @@
     <div v-for="m in rows" :key="m.id" class="app-card item" :class="tex(m.id)">
       <MomentPhotos v-if="m.photoUrls?.length" :urls="m.photoUrls" @tap="onPhotoTap" />
       <div class="i-meta">
-        <span class="app-chip tag" :class="m.source === 'PARENT' ? 'mine' : (m.source === 'EVAL_SYNC' ? 'sync' : 'tch')">
-          {{ m.source === 'EVAL_SYNC' ? '加分 · ' + m.sceneTag : m.sceneTag }}</span>
+        <span v-if="m.source === 'EVAL_SYNC'" class="app-chip tag sync">加分 · {{ m.sceneTag }}</span>
+        <template v-else>
+          <span v-for="tg in m.sceneTag.split('/')" :key="tg" class="app-chip tag"
+            :class="m.source === 'PARENT' ? 'mine' : 'tch'">{{ tg }}</span>
+        </template>
         <span class="by">{{ m.teacherName }}</span>
         <span class="time">{{ fmtTime(m.createTime) }}</span>
-        <button v-if="m.own" class="del" type="button" @click="remove(m)">删除</button>
+        <!-- 批72e：删除收紧为发布 30 分钟内（后端同校验兜底） -->
+        <button v-if="m.own && within30(m)" class="del" type="button" @click="remove(m)">删除</button>
       </div>
       <p v-if="m.note" class="note">{{ m.note }}</p>
     </div>
@@ -83,6 +87,11 @@ const curName = computed(() => children.value.find((c) => c.studentId === curId.
 const tex = (id: number) => texAt(29 + id)
 function fmtTime(t: string) {
   return t ? t.slice(0, 16).replace('T', ' ') : ''
+}
+
+/** 批72e：本人删除限发布 30 分钟内（超时按钮隐藏；后端同校验兜底） */
+function within30(m: Mom) {
+  return !!m.createTime && Date.now() - new Date(m.createTime).getTime() <= 30 * 60 * 1000
 }
 
 async function loadKids() {

@@ -19,7 +19,7 @@
         <div class="empty-photo">
           <span class="cam"><van-icon name="photograph" /></span>
           <p>点击拍照 / 选择照片</p>
-          <p class="tip">记录学生此刻的闪光瞬间（可多选，最多 9 张）</p>
+          <p class="tip">记录学生此刻的闪光瞬间（可多选，最多 9 张、共不超 90MB）</p>
         </div>
       </div>
       <div v-else class="app-card sec photos-card">
@@ -38,12 +38,12 @@
         </div>
       </div>
 
-      <!-- ② 场景标签（字典来自后端，可自建） -->
+      <!-- ② 场景标签（字典来自后端，可自建；批71 可多选，最多 5 个） -->
       <div class="app-card sec">
-        <div class="app-sec" style="margin: 0 0 10px">场景标签</div>
+        <div class="app-sec" style="margin: 0 0 10px">场景标签（可多选，最多 5 个）</div>
         <div class="tags">
-          <button v-for="t in sceneTags" :key="t.id" class="tag" :class="{ on: sceneTag === t.name }"
-            type="button" @click="sceneTag = t.name">{{ t.name }}
+          <button v-for="t in sceneTags" :key="t.id" class="tag" :class="{ on: tagPicked.has(t.name) }"
+            type="button" @click="toggleTag(t.name)">{{ t.name }}
             <!-- 批65：自建标签可删（建标签人本人；已被微光引用则后端拒绝） -->
             <van-icon v-if="t.mine" name="cross" class="tag-x" @click.stop="delTag(t)" />
           </button>
@@ -119,7 +119,7 @@ const route = useRoute()
 /* 批62 多图：photoFiles 1~9 张，previews 为对应 objectURL */
 const photoFiles = ref<File[]>([])
 const previews = ref<string[]>([])
-const sceneTag = ref('')
+const tagPicked = ref(new Set<string>())
 const note = ref('')
 const picked = ref(new Set<number>())
 const submitting = ref(false)
@@ -140,7 +140,7 @@ const filteredStudents = computed(() => {
   const k = stuKeyword.value.trim()
   return k ? students.value.filter((s) => s.name.includes(k)) : students.value
 })
-const canSubmit = computed(() => photoFiles.value.length > 0 && !!sceneTag.value && picked.value.size > 0)
+const canSubmit = computed(() => photoFiles.value.length > 0 && tagPicked.value.size > 0 && picked.value.size > 0)
 
 /* App 形态走系统相机/相册弹窗（每次一张，点「添加」续拍）；浏览器形态走文件选择（可多选） */
 async function pickPhoto() {
@@ -169,8 +169,14 @@ function addPhotos(files: File[]) {
   const room = 9 - photoFiles.value.length
   const take = files.slice(0, room)
   if (files.length > room) showToast('一次最多 9 张照片')
-  photoFiles.value = [...photoFiles.value, ...take]
-  previews.value = [...previews.value, ...take.map((f) => URL.createObjectURL(f))]
+  // 批72e 超限前置提示：单张>10MB 即时拒收（后端同校验，这里让老师当场知道原因）
+  const tooBig = take.filter((f) => f.size > 10 * 1024 * 1024)
+  if (tooBig.length) {
+    showToast(`${tooBig.length} 张超过 10MB，已跳过，请压缩后选择`)
+  }
+  const ok = take.filter((f) => f.size <= 10 * 1024 * 1024)
+  photoFiles.value = [...photoFiles.value, ...ok]
+  previews.value = [...previews.value, ...ok.map((f) => URL.createObjectURL(f))]
 }
 
 function removePhoto(i: number) {
@@ -184,6 +190,17 @@ function toggle(id: number) {
   if (s.has(id)) s.delete(id)
   else s.add(id)
   picked.value = s
+}
+
+/** 批71：场景标签多选（toggle，上限 5 个与后端校验一致） */
+function toggleTag(name: string) {
+  const s = new Set(tagPicked.value)
+  if (s.has(name)) s.delete(name)
+  else {
+    if (s.size >= 5) { showToast('场景标签最多选 5 个'); return }
+    s.add(name)
+  }
+  tagPicked.value = s
 }
 
 /** Vant4 confirm 载荷：{selectedValues, selectedOptions, selectedIndexes}，取值走 selectedOptions */
@@ -206,12 +223,18 @@ async function loadStudents() {
 
 async function submit() {
   if (!canSubmit.value || submitting.value) return
+  // 批72e 提交前总量预检（>90MB 会被网关拒且此前无提示）；后端/网关同上限兜底
+  const total = photoFiles.value.reduce((s, f) => s + f.size, 0)
+  if (total > 90 * 1024 * 1024) {
+    showToast(`照片总量 ${(total / 1024 / 1024).toFixed(0)}MB 超过 90MB，请减少张数或压缩后重试`)
+    return
+  }
   submitting.value = true
   try {
     const form = new FormData()
     for (const f of photoFiles.value) form.append('photos', f)
     form.append('classId', String(classId.value))
-    form.append('sceneTag', sceneTag.value)
+    for (const t of tagPicked.value) form.append('sceneTag', t)
     if (note.value.trim()) form.append('note', note.value.trim())
     for (const id of picked.value) form.append('studentIds', String(id))
     await apiForm('/api/moment', form)
@@ -231,7 +254,7 @@ function reset() {
   previews.value.forEach((u) => { if (u !== donePhoto.value) URL.revokeObjectURL(u) })
   photoFiles.value = []
   previews.value = []
-  sceneTag.value = ''
+  tagPicked.value = new Set()
   note.value = ''
   stuKeyword.value = ''
   picked.value = new Set()
@@ -255,7 +278,7 @@ async function delTag(t: { id: number; name: string }) {
   } catch { return }
   try {
     await api(`/api/moment/tags/${t.id}`, { method: 'DELETE' })
-    if (sceneTag.value === t.name) sceneTag.value = ''
+    tagPicked.value = new Set([...tagPicked.value].filter((n) => n !== t.name))
     await loadTags()
     showToast('标签已删除')
   } catch { /* 后端 message 已由 http 层透出 */ }
@@ -273,7 +296,7 @@ async function confirmAddTag() {
   try {
     await api('/api/moment/tags', { method: 'POST', json: { name } })
     await loadTags()
-    sceneTag.value = name          // 建好即选中
+    tagPicked.value = new Set(tagPicked.value).add(name)          // 建好即选中
     tagAdding.value = false
     showToast('标签已创建')
   } catch { /* 后端 message 已由 http 层透出 */ }

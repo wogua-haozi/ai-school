@@ -11,6 +11,7 @@ import com.aischool.server.mapper.StudentMapper;
 import com.aischool.server.security.AuthUtil;
 import com.aischool.server.service.auth.DataScopeService;
 import com.aischool.server.service.coin.CoinLedgerService;
+import com.aischool.server.service.excel.ExcelActivityHelper;
 import com.aischool.server.service.report.PdfStoreService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
@@ -29,6 +30,8 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigDecimal;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -36,6 +39,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -56,6 +60,7 @@ public class ActivityController {
     private final DataScopeService dataScope;
     private final CoinLedgerService coinLedger;
     private final PdfStoreService pdfStore;
+    private final ExcelActivityHelper excelActivity;
 
     @Data
     public static class ActivityReq {
@@ -64,6 +69,8 @@ public class ActivityController {
         private String type;
         private LocalDateTime startTime;
         private String place;
+        /** 批72d：课程视频外链（腾讯视频/B站等，点击跳转观看） */
+        private String videoUrl;
         private String intro;
     }
 
@@ -112,6 +119,7 @@ public class ActivityController {
         a.setType(req.getType());
         a.setStartTime(req.getStartTime());
         a.setPlace(req.getPlace());
+        a.setVideoUrl(videoLink(req.getVideoUrl()));
         a.setIntro(req.getIntro());
         a.setCreatorId(user.userId());
         activityMapper.insert(a);
@@ -133,6 +141,7 @@ public class ActivityController {
                 .set(Activity::getType, req.getType())
                 .set(Activity::getStartTime, req.getStartTime())
                 .set(Activity::getPlace, req.getPlace())
+                .set(Activity::getVideoUrl, videoLink(req.getVideoUrl()))
                 .set(Activity::getIntro, req.getIntro()));
         return ApiResponse.ok();
     }
@@ -195,6 +204,22 @@ public class ActivityController {
         activityMapper.update(null, new LambdaUpdateWrapper<Activity>()
                 .eq(Activity::getId, id).set(Activity::getCoverUrl, objectName));
         return ApiResponse.ok(Map.of("coverUrl", objectName));
+    }
+
+    /** 批72d：课程视频外链维护——老师/领导层/管理员可设可清（家长只读，观看走外链平台播放器） */
+    @PutMapping("/{id}/video")
+    public ApiResponse<Void> setVideo(@PathVariable Long id, @RequestBody Map<String, String> body) {
+        if ("PARENT".equals(AuthUtil.current().role())) {
+            throw new BizException(403, "家长仅可观看课程视频");
+        }
+        if (activityMapper.selectById(id) == null) {
+            throw new BizException(404, "课程不存在");
+        }
+        // 空值=清除：updateById 会忽略 null 字段，须 UpdateWrapper 显式置空
+        activityMapper.update(null, new LambdaUpdateWrapper<Activity>()
+                .eq(Activity::getId, id)
+                .set(Activity::getVideoUrl, videoLink(body.get("videoUrl"))));
+        return ApiResponse.ok(null);
     }
 
     /** 封面图（任意登录可看，列表缩略图用） */
@@ -313,6 +338,156 @@ public class ActivityController {
         signupMapper.deleteById(signupId);
         coinLedger.reverse(su.getStudentId(), "活动", signupId);
         return ApiResponse.ok();
+    }
+
+    // ───────────────── 批72：Excel 批量导入参与 ─────────────────
+
+    /** 下载参与导入模板（单班名册预填；权限同录参与） */
+    @GetMapping("/{id}/import-template")
+    public ResponseEntity<byte[]> importTemplate(@PathVariable Long id, @RequestParam Long classId) {
+        if (activityMapper.selectById(id) == null) {
+            throw new BizException(404, "活动不存在");
+        }
+        dataScope.checkClassOperable(AuthUtil.current(), classId);
+        List<Student> roster = studentMapper.selectList(new LambdaQueryWrapper<Student>()
+                .eq(Student::getClassId, classId).orderByAsc(Student::getStudentNo));
+        byte[] bytes = excelActivity.template(roster);
+        String filename = URLEncoder.encode("参与导入模板.xlsx", StandardCharsets.UTF_8);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + filename)
+                .contentType(MediaType.parseMediaType(
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .contentLength(bytes.length)
+                .body(bytes);
+    }
+
+    /** Excel 批量导入参与（单班一表，先选课后导入）：学号不属该班整单拒绝（防错班串数据，同成绩导入防呆）；
+     *  已录/非法值逐行 skip 列原因；币入账口径同录参与（币>0 须奖项，入账日期=课程时间） */
+    @PostMapping("/{id}/import")
+    public ApiResponse<Map<String, Object>> importSignups(@PathVariable Long id,
+                                                          @RequestParam Long classId,
+                                                          @RequestParam("file") MultipartFile file) {
+        Activity activity = activityMapper.selectById(id);
+        if (activity == null) {
+            throw new BizException(404, "活动不存在");
+        }
+        dataScope.checkClassOperable(AuthUtil.current(), classId);
+        if (file == null || file.isEmpty()) {
+            throw new BizException(400, "请选择 Excel 文件");
+        }
+        List<ExcelActivityHelper.SignupRow> parsed;
+        try (InputStream in = file.getInputStream()) {
+            parsed = excelActivity.read(in);
+        } catch (BizException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BizException(400, "读取文件失败: " + e.getMessage());
+        }
+        Map<String, Student> byNo = studentMapper.selectList(new LambdaQueryWrapper<Student>()
+                        .eq(Student::getClassId, classId)).stream()
+                .collect(Collectors.toMap(Student::getStudentNo, Function.identity(), (a, b) -> a));
+        List<String> foreignNos = new ArrayList<>();
+        for (ExcelActivityHelper.SignupRow r : parsed) {
+            if (!byNo.containsKey(r.studentNo())) {
+                foreignNos.add(r.studentNo() + (r.name().isBlank() ? "" : "(" + r.name() + ")"));
+            }
+        }
+        if (!foreignNos.isEmpty()) {
+            throw new BizException(400, "以下学号不属于该班级，为防误导整单已拒绝导入: " + String.join("、", foreignNos));
+        }
+        // 同课同生只录一次：库里已有的与本次先入的都算已录
+        Set<Long> existed = signupMapper.selectList(new LambdaQueryWrapper<ActivitySignup>()
+                        .eq(ActivitySignup::getActivityId, id)).stream()
+                .map(ActivitySignup::getStudentId).collect(Collectors.toSet());
+        List<Map<String, Object>> skipped = new ArrayList<>();
+        List<ActivitySignup> toInsert = new ArrayList<>();
+        List<BigDecimal> coins = new ArrayList<>();
+        for (ExcelActivityHelper.SignupRow r : parsed) {
+            Student st = byNo.get(r.studentNo());
+            String reason = rowReason(r, existed.contains(st.getId()));
+            if (reason != null) {
+                skipped.add(Map.of("row", r.rowNum(), "studentNo", r.studentNo(), "name", r.name(), "reason", reason));
+                continue;
+            }
+            ActivitySignup su = new ActivitySignup();
+            su.setActivityId(id);
+            su.setStudentId(st.getId());
+            su.setSignupTime(LocalDateTime.now());
+            if (checkinOf(r.checkin())) {
+                su.setCheckinTime(LocalDateTime.now());
+            }
+            su.setAward(r.award().isBlank() ? null : r.award());
+            su.setPerformance(r.performance().isBlank() ? null : r.performance());
+            toInsert.add(su);
+            coins.add(r.coin().isBlank() ? null : new BigDecimal(r.coin()));
+            existed.add(st.getId());
+        }
+        LocalDate date = activity.getStartTime() == null ? null : activity.getStartTime().toLocalDate();
+        for (int i = 0; i < toInsert.size(); i++) {
+            signupMapper.insert(toInsert.get(i));
+            BigDecimal coin = coins.get(i);
+            if (coin != null && coin.compareTo(BigDecimal.ZERO) > 0) {
+                coinLedger.income(toInsert.get(i).getStudentId(), date, "活动", toInsert.get(i).getId(),
+                        "活动-" + activity.getTitle(), coin);
+            }
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("saved", toInsert.size());
+        result.put("skipped", skipped);
+        return ApiResponse.ok(result);
+    }
+
+    /** 行校验：null=可入；否则为 skip 原因 */
+    private String rowReason(ExcelActivityHelper.SignupRow r, boolean existed) {
+        if (existed) {
+            return "该生已有本课参与记录";
+        }
+        if (!r.checkin().isBlank() && !checkinOf(r.checkin()) && !"否".equals(r.checkin())) {
+            return "签到列应填「是/否」，收到: " + r.checkin();
+        }
+        if (r.award().length() > 128) {
+            return "奖项超过 128 字";
+        }
+        if (r.performance().length() > 255) {
+            return "表现超过 255 字";
+        }
+        if (!r.coin().isBlank()) {
+            BigDecimal coin;
+            try {
+                coin = new BigDecimal(r.coin());
+            } catch (NumberFormatException e) {
+                return "扬长币不是数字: " + r.coin();
+            }
+            if (coin.compareTo(BigDecimal.ZERO) < 0) {
+                return "扬长币不能为负";
+            }
+            if (coin.compareTo(BigDecimal.ZERO) > 0 && r.award().isBlank()) {
+                return "获奖才能附扬长币，请填奖项";
+            }
+        }
+        return null;
+    }
+
+    /** 签到列取值：「是/√/true」→ 签到，其余（含空、「否」）→ 不签到 */
+    private boolean checkinOf(String v) {
+        return "是".equals(v) || "√".equals(v) || "true".equalsIgnoreCase(v);
+    }
+
+    // ───────────────── 批72d：课程视频外链（在线播放对服务器压力过大，甲方拍板存外链点击跳转） ─────────────────
+
+    /** 外链宽松校验：非空时须 http(s):// 开头且 ≤500 字 */
+    private String videoLink(String url) {
+        if (url == null || url.isBlank()) {
+            return null;
+        }
+        String u = url.trim();
+        if (!u.startsWith("http://") && !u.startsWith("https://")) {
+            throw new BizException(400, "视频链接须以 http:// 或 https:// 开头");
+        }
+        if (u.length() > 500) {
+            throw new BizException(400, "视频链接过长");
+        }
+        return u;
     }
 
     // ───────────────── 权限 ─────────────────

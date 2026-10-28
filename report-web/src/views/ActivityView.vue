@@ -31,6 +31,17 @@
         <template #default="{ row }">{{ fmt(row.startTime) }}</template>
       </el-table-column>
       <el-table-column prop="place" label="地点" width="110" />
+      <!-- 批72d：课程视频外链（在线播放对服务器负担太重，存外链点击跳转观看） -->
+      <el-table-column label="视频" width="110">
+        <template #default="{ row }">
+          <el-link v-if="row.videoUrl" type="primary" :underline="false" :href="row.videoUrl" target="_blank"
+            style="margin-right: 8px" @click.stop>观看</el-link>
+          <el-button v-if="!isAdmin" link size="small" @click.stop="setVideo(row)">
+            {{ row.videoUrl ? '改' : '设置' }}
+          </el-button>
+          <span v-if="isAdmin && !row.videoUrl" style="color: #c0c4cc; font-size: 12px">无</span>
+        </template>
+      </el-table-column>
       <el-table-column v-if="isAdmin" label="操作" width="120">
         <template #default="{ row }">
           <el-button link size="small" @click.stop="openEdit(row)">编辑</el-button>
@@ -43,7 +54,10 @@
     <el-card v-if="current" style="margin-top: 16px">
       <template #header>
         参与记录 — {{ current.title }}
-        <el-button type="primary" size="small" style="float: right" @click="openSignup()">录参与</el-button>
+        <div style="float: right; display: flex; gap: 8px">
+          <el-button size="small" @click="openImport">Excel 导入</el-button>
+          <el-button type="primary" size="small" @click="openSignup()">录参与</el-button>
+        </div>
       </template>
       <el-table :data="signups">
         <el-table-column prop="studentName" label="学生" width="100" />
@@ -80,13 +94,17 @@
           <el-date-picker v-model="editForm.startTime" type="datetime" value-format="YYYY-MM-DDTHH:mm:ss" />
         </el-form-item>
         <el-form-item label="地点"><el-input v-model="editForm.place" /></el-form-item>
+        <el-form-item label="视频链接">
+          <el-input v-model="editForm.videoUrl" placeholder="https://（腾讯视频/B站等，选填）" clearable />
+          <div class="hint">填课程视频的外链地址，保存后家长/老师点击「观看」跳转播放</div>
+        </el-form-item>
         <el-form-item label="简介"><el-input v-model="editForm.intro" type="textarea" :rows="2" /></el-form-item>
         <el-form-item v-if="editForm.id" label="封面">
           <div style="display: flex; align-items: center; gap: 10px">
             <el-image v-if="covers[editForm.id]" :src="covers[editForm.id]" fit="cover"
               style="width: 84px; height: 56px; border-radius: 4px" :preview-src-list="[covers[editForm.id]]"
               preview-teleported />
-            <input type="file" accept="image/jpeg,image/png" @change="(e: Event) => (coverFile = (e.target as HTMLInputElement).files?.[0] ?? null)" />
+            <input type="file" accept="image/jpeg,image/png" @change="pickCover" />
           </div>
           <div class="hint">jpg/png ≤5MB，保存时上传；重复上传覆盖</div>
         </el-form-item>
@@ -123,6 +141,38 @@
         <el-button type="primary" :disabled="!signupForm.signupId && !signupForm.studentId" @click="saveSignup">保存</el-button>
       </template>
     </el-dialog>
+
+    <!-- 批72：Excel 批量导入参与（先选课，单班一表，模板预填名册） -->
+    <el-dialog v-model="importVisible" title="Excel 导入参与" width="520px">
+      <el-form label-width="70px">
+        <el-form-item label="班级">
+          <el-select v-model="importClassId" style="width: 100%">
+            <el-option v-for="c in classes" :key="c.id" :label="c.name" :value="c.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="模板">
+          <el-button size="small" :disabled="!importClassId" @click="downloadTpl">下载模板（预填本班名册）</el-button>
+        </el-form-item>
+        <el-form-item label="文件">
+          <input type="file" accept=".xlsx"
+            @change="(e: Event) => (importFile = (e.target as HTMLInputElement).files?.[0] ?? null)" />
+          <div class="hint">每行一名学生：签到（是/否）、奖项、表现、扬长币（>0 须填奖项）；学号不属本班整单拒绝，已录过的行跳过</div>
+        </el-form-item>
+      </el-form>
+      <el-alert v-if="importResult" :type="importResult.skipped.length ? 'warning' : 'success'" :closable="false"
+        style="margin-top: 4px">
+        <template #title>
+          已导入 {{ importResult.saved }} 条<template v-if="importResult.skipped.length">，{{ importResult.skipped.length }} 条跳过：</template>
+        </template>
+        <div v-for="(s, i) in importResult.skipped" :key="i" style="font-size: 12px; line-height: 1.8">
+          第{{ s.row }}行 {{ s.name || s.studentNo }}：{{ s.reason }}
+        </div>
+      </el-alert>
+      <template #footer>
+        <el-button @click="importVisible = false">关闭</el-button>
+        <el-button type="primary" :disabled="!importClassId || !importFile" :loading="importing" @click="doImport">导入</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -131,12 +181,13 @@ import { computed, onMounted, ref } from 'vue'
 import { motion } from 'motion-v'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api, apiForm, fetchBlob } from '../api/http'
+import { saveFile } from '../api/nativeShare'
 import { useAuthStore } from '../stores/auth'
 
 /** 批40e：扬长课程七类（与后端 ActivityController.CATEGORIES 一致；「其他」=临时性活动） */
 const CATS = ['德育课程', '扬长选修', '体艺特训队', '跨学科学习', '做中学', '社会实践', '其他']
 
-interface Activity { id: number; title: string; type?: string; startTime?: string; place?: string; intro?: string; coverUrl?: string }
+interface Activity { id: number; title: string; type?: string; startTime?: string; place?: string; intro?: string; coverUrl?: string; videoUrl?: string }
 interface Signup { signupId: number; studentId: number; studentName: string; checkinTime?: string; award?: string; performance?: string }
 
 const auth = useAuthStore()
@@ -205,6 +256,18 @@ function openEdit(a?: Activity) {
   editVisible.value = true
 }
 
+/** 批72e：封面超 5MB 当场提示（后端同校验，这里老师立即知道原因） */
+function pickCover(e: Event) {
+  const f = (e.target as HTMLInputElement).files?.[0] ?? null
+  if (f && f.size > 5 * 1024 * 1024) {
+    ElMessage.warning('封面图片不能超过 5MB，请压缩后重选')
+    ;(e.target as HTMLInputElement).value = ''
+    coverFile.value = null
+    return
+  }
+  coverFile.value = f
+}
+
 async function saveActivity() {
   const f = editForm.value
   if (f.id) {
@@ -242,6 +305,20 @@ async function delSignup(s: Signup) {
   await loadSignups()
 }
 
+/** 批72d：非管理员教师/领导层维护课程视频外链（清空提交=移除；管理员走编辑表单） */
+async function setVideo(a: Activity) {
+  let url: string
+  try {
+    const r = await ElMessageBox.prompt('腾讯视频/B站等课程视频地址（http:// 或 https:// 开头，留空=移除）',
+      '课程视频链接', { inputValue: a.videoUrl || '', inputPlaceholder: 'https://',
+        inputPattern: /^$|^https?:\/\/.{3,490}$/, inputErrorMessage: '须以 http:// 或 https:// 开头' })
+    url = r.value.trim()
+  } catch { return }
+  await api(`/api/activity/${a.id}/video`, { method: 'PUT', json: { videoUrl: url || undefined } })
+  ElMessage.success('已保存')
+  await loadActivities()
+}
+
 async function openSignup(s?: Signup) {
   signupForm.value = s
     ? { signupId: s.signupId, checkin: !!s.checkinTime, award: s.award || '', performance: s.performance || '', coin: 0 }
@@ -260,6 +337,43 @@ async function loadStudents() {
     `/api/student/list?classId=${signupClassId.value}&page=1&size=100`,
   )
   students.value = d.records
+}
+
+/* ── 批72：Excel 批量导入参与（模板预填名册，结果逐行明细） ── */
+const importVisible = ref(false)
+const importClassId = ref<number>()
+const importFile = ref<File | null>(null)
+const importing = ref(false)
+const importResult = ref<{ saved: number; skipped: { row: number; studentNo: string; name: string; reason: string }[] }>()
+
+async function openImport() {
+  if (!classes.value.length) {
+    classes.value = await api('/api/meta/my-classes')
+  }
+  importClassId.value = classes.value[0]?.id
+  importFile.value = null
+  importResult.value = undefined
+  importVisible.value = true
+}
+
+async function downloadTpl() {
+  if (!current.value || !importClassId.value) return
+  const blob = await fetchBlob(`/api/activity/${current.value.id}/import-template?classId=${importClassId.value}`)
+  const cls = classes.value.find((c) => c.id === importClassId.value)?.name || ''
+  await saveFile(blob, `参与导入模板_${current.value.title}_${cls}.xlsx`)
+}
+
+async function doImport() {
+  if (!current.value || !importClassId.value || !importFile.value || importing.value) return
+  importing.value = true
+  try {
+    const form = new FormData()
+    form.append('file', importFile.value)
+    importResult.value = await apiForm(`/api/activity/${current.value.id}/import?classId=${importClassId.value}`, form)
+    await loadSignups()
+  } catch { /* 整单拒绝等原因已由 http 层弹出 */ } finally {
+    importing.value = false
+  }
 }
 
 async function saveSignup() {
