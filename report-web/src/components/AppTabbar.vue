@@ -47,10 +47,10 @@ const actions = computed<ActionSheetAction[]>(() => [
   { name: '微光瞬间', subname: '班级微光照片墙', icon: 'photo-o' },
   { name: '素养评价', subname: '课堂/作业表现', icon: 'edit' },
   ...(auth.scoreAccess ? [{ name: '成绩管理', subname: '学科成绩', icon: 'bar-chart-o' }] : []),
-  { name: '课程记录', subname: '扬长课程活动', icon: 'flag-o' },
+  { name: '扬长课程', subname: '课程活动记录', icon: 'flag-o' },
   { name: '荣誉记录', subname: '获奖证书', icon: 'medal-o' },
 ])
-const routes: Record<string, string> = { '拍照记录': '/moment/new', '微光瞬间': '/moment', '素养评价': '/evaluate', '成绩管理': '/scores', '课程记录': '/activity', '荣誉记录': '/honor' }
+const routes: Record<string, string> = { '拍照记录': '/moment/new', '微光瞬间': '/moment', '素养评价': '/evaluate', '成绩管理': '/scores', '扬长课程': '/activity', '荣誉记录': '/honor' }
 
 function onSelect(action: ActionSheetAction) {
   sheetOpen.value = false
