@@ -4,8 +4,10 @@ import com.aischool.server.common.ApiResponse;
 import com.aischool.server.common.BizException;
 import com.aischool.server.entity.Activity;
 import com.aischool.server.entity.ActivitySignup;
+import com.aischool.server.entity.Clazz;
 import com.aischool.server.entity.Student;
 import com.aischool.server.mapper.ActivityMapper;
+import com.aischool.server.mapper.ClazzMapper;
 import com.aischool.server.mapper.ActivitySignupMapper;
 import com.aischool.server.mapper.StudentMapper;
 import com.aischool.server.security.AuthUtil;
@@ -44,7 +46,8 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-/** 扬长课程（原活动管理，批40a 更名/批40e 七类改造）：课程 CRUD（管理员）+ 参与记录（管理员/本班班主任），获奖可附扬长币入账 */
+/** 扬长课程（原活动管理，批40a 更名/批40e 七类改造）：课程 CRUD（管理员）+ 参与记录，获奖可附扬长币入账；
+ *  批73b 选修课跨班：参与面向全校学生开放给全体教师（不再限本班/任教班） */
 @RestController
 @RequestMapping("/api/activity")
 @RequiredArgsConstructor
@@ -57,6 +60,7 @@ public class ActivityController {
     private final ActivityMapper activityMapper;
     private final ActivitySignupMapper signupMapper;
     private final StudentMapper studentMapper;
+    private final ClazzMapper clazzMapper;
     private final DataScopeService dataScope;
     private final CoinLedgerService coinLedger;
     private final PdfStoreService pdfStore;
@@ -282,7 +286,7 @@ public class ActivityController {
         if (activity == null) {
             throw new BizException(404, "活动不存在");
         }
-        checkWritable(req.getStudentId());
+        checkSignupStudent(req.getStudentId());
         boolean withCoin = req.getCoin() != null && req.getCoin().compareTo(BigDecimal.ZERO) > 0;
         if (withCoin && (req.getAward() == null || req.getAward().isBlank())) {
             throw new BizException(400, "获奖才能附扬长币，请先填奖项");
@@ -317,7 +321,7 @@ public class ActivityController {
         if (su == null || !su.getActivityId().equals(id)) {
             throw new BizException(404, "参与记录不存在");
         }
-        checkWritable(su.getStudentId());
+        checkSignupStudent(su.getStudentId());
         signupMapper.update(null, new LambdaUpdateWrapper<ActivitySignup>()
                 .eq(ActivitySignup::getId, signupId)
                 .set(ActivitySignup::getAward, req.getAward())
@@ -334,7 +338,7 @@ public class ActivityController {
         if (su == null || !su.getActivityId().equals(id)) {
             throw new BizException(404, "参与记录不存在");
         }
-        checkWritable(su.getStudentId());
+        checkSignupStudent(su.getStudentId());
         signupMapper.deleteById(signupId);
         coinLedger.reverse(su.getStudentId(), "活动", signupId);
         return ApiResponse.ok();
@@ -361,17 +365,15 @@ public class ActivityController {
                 .body(bytes);
     }
 
-    /** Excel 批量导入参与（单班一表，先选课后导入）：学号不属该班整单拒绝（防错班串数据，同成绩导入防呆）；
+    /** Excel 批量导入参与（先选课后导入）：学号须为本校在读学号（批73b 跨班放开，防呆改全校匹配）；
      *  已录/非法值逐行 skip 列原因；币入账口径同录参与（币>0 须奖项，入账日期=课程时间） */
     @PostMapping("/{id}/import")
     public ApiResponse<Map<String, Object>> importSignups(@PathVariable Long id,
-                                                          @RequestParam Long classId,
                                                           @RequestParam("file") MultipartFile file) {
         Activity activity = activityMapper.selectById(id);
         if (activity == null) {
             throw new BizException(404, "活动不存在");
         }
-        dataScope.checkClassOperable(AuthUtil.current(), classId);
         if (file == null || file.isEmpty()) {
             throw new BizException(400, "请选择 Excel 文件");
         }
@@ -384,7 +386,7 @@ public class ActivityController {
             throw new BizException(400, "读取文件失败: " + e.getMessage());
         }
         Map<String, Student> byNo = studentMapper.selectList(new LambdaQueryWrapper<Student>()
-                        .eq(Student::getClassId, classId)).stream()
+                        .eq(Student::getStatus, "在读")).stream()
                 .collect(Collectors.toMap(Student::getStudentNo, Function.identity(), (a, b) -> a));
         List<String> foreignNos = new ArrayList<>();
         for (ExcelActivityHelper.SignupRow r : parsed) {
@@ -393,7 +395,7 @@ public class ActivityController {
             }
         }
         if (!foreignNos.isEmpty()) {
-            throw new BizException(400, "以下学号不属于该班级，为防误导整单已拒绝导入: " + String.join("、", foreignNos));
+            throw new BizException(400, "以下学号不是本校在读学号，为防误导整单已拒绝导入: " + String.join("、", foreignNos));
         }
         // 同课同生只录一次：库里已有的与本次先入的都算已录
         Set<Long> existed = signupMapper.selectList(new LambdaQueryWrapper<ActivitySignup>()
@@ -493,12 +495,39 @@ public class ActivityController {
     // ───────────────── 权限 ─────────────────
 
     /** 写：管理员或该班班主任（与 AiController.checkWritable 同构） */
-    private void checkWritable(Long studentId) {
-        var user = AuthUtil.current();
-        Student student = dataScope.checkStudentAccess(user, studentId);
-        if (!"ADMIN".equals(user.role())) {
-            dataScope.checkClassOperable(user, student.getClassId());
+    /** 批73b 跨班：录/改/删参与只要求学生在库（选修课面向全体学生），不再校验本班数据面 */
+    private void checkSignupStudent(Long studentId) {
+        if (studentMapper.selectById(studentId) == null) {
+            throw new BizException(404, "学生不存在");
         }
+    }
+
+    /** 批73b 跨班选人：全校在读学生搜索（姓名模糊/学号前缀，限 20 条），录参与下拉用 */
+    @GetMapping("/{id}/students")
+    public ApiResponse<List<Map<String, Object>>> searchStudents(@PathVariable Long id,
+                                                                 @RequestParam String keyword) {
+        if (activityMapper.selectById(id) == null) {
+            throw new BizException(404, "活动不存在");
+        }
+        String kw = keyword.trim();
+        if (kw.isEmpty()) {
+            return ApiResponse.ok(List.of());
+        }
+        List<Student> list = studentMapper.selectList(new LambdaQueryWrapper<Student>()
+                .eq(Student::getStatus, "在读")
+                .and(w -> w.like(Student::getName, kw).or().likeRight(Student::getStudentNo, kw))
+                .orderByAsc(Student::getStudentNo)
+                .last("LIMIT 20"));
+        Map<Long, String> clsNames = clazzMapper.selectList(null).stream()
+                .collect(Collectors.toMap(Clazz::getId, Clazz::getName));
+        return ApiResponse.ok(list.stream().map(s -> {
+            Map<String, Object> r = new LinkedHashMap<>();
+            r.put("id", s.getId());
+            r.put("studentNo", s.getStudentNo());
+            r.put("name", s.getName());
+            r.put("className", clsNames.getOrDefault(s.getClassId(), ""));
+            return r;
+        }).toList());
     }
 
     private String contentTypeOf(String objectName) {

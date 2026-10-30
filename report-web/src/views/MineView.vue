@@ -21,6 +21,9 @@
     <div class="app-card tex-32 cells">
       <!-- 批70 教师自查：本人当月各板块操作次数（管理员/领导/级长同样可看） -->
       <van-cell title="我的操作统计" icon="chart-trending-o" is-link @click="$router.push('/usage-my')" />
+      <!-- 批73c 班主任/级长统计：入口按挂名/年级绑定显隐（scope 探测） -->
+      <van-cell v-if="usageScope?.managed?.length" title="本班填写统计" icon="bar-chart-o" is-link @click="$router.push('/class-usage')" />
+      <van-cell v-if="usageScope?.homeroom?.length" title="学生记录统计" icon="records-o" is-link @click="$router.push('/student-usage')" />
       <van-cell title="修改手机号" icon="phone-o" is-link @click="phoneOpen = true" />
       <van-cell title="修改密码" icon="lock" is-link @click="pwdOpen = true" />
       <van-cell title="意见反馈" icon="chat-o" is-link @click="$router.push('/feedback')" />
@@ -152,6 +155,9 @@ async function onPhoneClose(action: string) {
 
 const version = __APP_VERSION__
 
+/** 批73c 班主任/级长统计入口显隐：homeroom=挂名班（第5条）；managed=第4条范围 */
+const usageScope = ref<{ homeroom: { id: number }[]; managed: { id: number }[] } | null>(null)
+
 /** App 内显示真实安装包版本（网页版回退 package.json 版本） */
 const appVersion = ref('')
 onMounted(async () => {
@@ -159,6 +165,7 @@ onMounted(async () => {
     try { appVersion.value = 'v' + (await CapApp.getInfo()).version } catch { /* 忽略 */ }
   }
   if (!appVersion.value) appVersion.value = 'v' + version
+  try { usageScope.value = await api('/api/class-usage/scope') } catch { /* 家长壳等无入口 */ }
 })
 
 function onCheckUpdate() {

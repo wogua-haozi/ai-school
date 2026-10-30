@@ -118,14 +118,10 @@
     <el-dialog v-model="signupVisible" :title="signupForm.signupId ? '编辑参与' : '录参与'" width="480px">
       <el-form label-width="70px">
         <template v-if="!signupForm.signupId">
-          <el-form-item label="班级">
-            <el-select v-model="signupClassId" style="width: 100%" @change="loadStudents">
-              <el-option v-for="c in classes" :key="c.id" :label="c.name" :value="c.id" />
-            </el-select>
-          </el-form-item>
           <el-form-item label="学生" required>
-            <el-select v-model="signupForm.studentId" filterable style="width: 100%">
-              <el-option v-for="s in students" :key="s.id" :label="s.name" :value="s.id" />
+            <el-select v-model="signupForm.studentId" filterable remote :remote-method="searchStudents"
+              :loading="searching" clearable style="width: 100%" placeholder="输入姓名或学号搜索（全校）">
+              <el-option v-for="s in students" :key="s.id" :label="`${s.name}（${s.className}）`" :value="s.id" />
             </el-select>
           </el-form-item>
         </template>
@@ -156,7 +152,7 @@
         <el-form-item label="文件">
           <input type="file" accept=".xlsx"
             @change="(e: Event) => (importFile = (e.target as HTMLInputElement).files?.[0] ?? null)" />
-          <div class="hint">每行一名学生：签到（是/否）、奖项、表现、扬长币（>0 须填奖项）；学号不属本班整单拒绝，已录过的行跳过</div>
+          <div class="hint">每行一名学生：签到（是/否）、奖项、表现、扬长币（>0 须填奖项）；学号须为本校在读学号（可跨班），不匹配整单拒绝，已录过的行跳过</div>
         </el-form-item>
       </el-form>
       <el-alert v-if="importResult" :type="importResult.skipped.length ? 'warning' : 'success'" :closable="false"
@@ -170,7 +166,7 @@
       </el-alert>
       <template #footer>
         <el-button @click="importVisible = false">关闭</el-button>
-        <el-button type="primary" :disabled="!importClassId || !importFile" :loading="importing" @click="doImport">导入</el-button>
+        <el-button type="primary" :disabled="!importFile" :loading="importing" @click="doImport">导入</el-button>
       </template>
     </el-dialog>
   </div>
@@ -201,14 +197,14 @@ const filtered = computed(() =>
 const current = ref<Activity>()
 const signups = ref<Signup[]>([])
 const classes = ref<{ id: number; name: string }[]>([])
-const students = ref<{ id: number; name: string }[]>([])
+const students = ref<{ id: number; name: string; studentNo: string; className: string }[]>([])
+const searching = ref(false)
 const covers = ref<Record<number, string>>({})
 const coverFile = ref<File | null>(null)
 
 const editVisible = ref(false)
 const editForm = ref<Partial<Activity>>({})
 const signupVisible = ref(false)
-const signupClassId = ref<number>()
 const signupForm = ref<{ signupId?: number; studentId?: number; checkin: boolean; award: string; performance: string; coin: number }>(
   { checkin: false, award: '', performance: '', coin: 0 },
 )
@@ -323,20 +319,24 @@ async function openSignup(s?: Signup) {
   signupForm.value = s
     ? { signupId: s.signupId, checkin: !!s.checkinTime, award: s.award || '', performance: s.performance || '', coin: 0 }
     : { checkin: false, award: '', performance: '', coin: 0 }
-  if (!s && !classes.value.length) {
-    classes.value = await api('/api/meta/my-classes')
-    signupClassId.value = classes.value[0]?.id
-    await loadStudents()
-  }
+  if (!s) students.value = []
   signupVisible.value = true
 }
 
-async function loadStudents() {
-  if (!signupClassId.value) return
-  const d = await api<{ records: { id: number; name: string }[] }>(
-    `/api/student/list?classId=${signupClassId.value}&page=1&size=100`,
-  )
-  students.value = d.records
+/** 批73b 跨班选人：全校在读学生搜索（选修课面向全体学生，不再限本班） */
+async function searchStudents(kw: string) {
+  if (!current.value || !kw.trim()) {
+    students.value = []
+    return
+  }
+  searching.value = true
+  try {
+    students.value = await api(
+      `/api/activity/${current.value.id}/students?keyword=${encodeURIComponent(kw.trim())}`,
+    )
+  } finally {
+    searching.value = false
+  }
 }
 
 /* ── 批72：Excel 批量导入参与（模板预填名册，结果逐行明细） ── */
@@ -364,12 +364,12 @@ async function downloadTpl() {
 }
 
 async function doImport() {
-  if (!current.value || !importClassId.value || !importFile.value || importing.value) return
+  if (!current.value || !importFile.value || importing.value) return
   importing.value = true
   try {
     const form = new FormData()
     form.append('file', importFile.value)
-    importResult.value = await apiForm(`/api/activity/${current.value.id}/import?classId=${importClassId.value}`, form)
+    importResult.value = await apiForm(`/api/activity/${current.value.id}/import`, form)
     await loadSignups()
   } catch { /* 整单拒绝等原因已由 http 层弹出 */ } finally {
     importing.value = false

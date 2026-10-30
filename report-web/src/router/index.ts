@@ -77,6 +77,9 @@ const router = createRouter({
     { path: '/footprint', redirect: () => ({ path: '/my-growth', query: { tab: 'footprint' } }) },
     // 教师月度操作自查（批70）：本人各板块操作次数，自然月切换（家长/门卫角色后端 403）
     { path: '/usage-my', component: () => import('../views/UsageMyView.vue'), meta: { layout: 'sub', title: '我的操作统计' } },
+    // 批73c 班主任/级长统计：老师对本班学生的填写情况（第4条）/ 本班每生六项记录数（第5条，仅班主任）
+    { path: '/class-usage', component: () => import('../views/ClassUsageView.vue'), meta: { layout: 'sub', title: '本班填写统计' } },
+    { path: '/student-usage', component: () => import('../views/StudentUsageView.vue'), meta: { layout: 'sub', title: '学生记录统计' } },
     { path: '/admin', component: () => import('../views/AdminView.vue'), meta: { layout: 'sub', title: '系统管理', admin: true } },
     // 家长端（PARENT 分流，方案C 新中式风格 --shine-*）：孩子卡+评价动态；报告批5 家长版再开
     { path: '/p/home', component: () => import('../views/parent/ParentHomeView.vue'), meta: { layout: 'ptab', tab: 'phome' } },
