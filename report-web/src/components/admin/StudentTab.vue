@@ -9,7 +9,7 @@
         <el-option label="在读" value="在读" /><el-option label="转出" value="转出" /><el-option label="毕业" value="毕业" />
       </el-select>
       <el-button type="primary" @click="openCreate">新建学生</el-button>
-      <el-button @click="openImport">导入新生</el-button>
+      <el-button @click="openImport">导入学生</el-button>
     </div>
 
     <el-table :data="records" size="small">
@@ -99,10 +99,23 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="importDialog" title="导入新生（Excel）" width="560px">
+    <el-dialog v-model="importDialog" title="导入学生（Excel）" width="560px">
+      <div style="margin-bottom: 10px">
+        <el-radio-group v-model="importMode">
+          <el-radio-button value="append">仅新增（新生）</el-radio-button>
+          <el-radio-button value="replace">覆盖刷新（名册更新）</el-radio-button>
+        </el-radio-group>
+      </div>
       <div style="margin-bottom: 10px; color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.6">
-        先下载模板，从第 2 行开始填写。班级名称必须与系统完全一致（当前有：{{ classNames.join('、') || '（先去组织管理建班）' }}）。
-        逐行校验：合法行入库，问题行跳过并列出原因。
+        <template v-if="importMode === 'append'">
+          先下载模板，从第 2 行开始填写。班级名称必须与系统完全一致（当前有：{{ classNames.join('、') || '（先去组织管理建班）' }}）。
+          逐行校验：合法行入库，问题行跳过并列出原因。
+        </template>
+        <template v-else>
+          拿到新名册整表刷一遍：按<b>学号</b>匹配——已有的更新姓名/性别/班级/家长/宿舍（状态/照片不动），没有的新增；
+          表中没有的在读学生<b>保持原状</b>（不会误删，如需批量转出请用「年级与班级」全班标记）。
+          班级名称必须与系统完全一致。任一行有误则整体不导入。
+        </template>
       </div>
       <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap">
         <el-button size="small" @click="downloadTemplate">下载模板</el-button>
@@ -110,7 +123,12 @@
           @change="(e: Event) => (importFile = (e.target as HTMLInputElement).files?.[0] ?? null)" />
       </div>
       <el-alert v-if="importResult" :type="importResult.failed ? 'warning' : 'success'" :closable="false">
-        成功导入 {{ importResult.inserted }} 人<template v-if="importResult.failed">，失败 {{ importResult.failed }} 行：
+        <template v-if="importMode === 'replace'">
+          新增 {{ importResult.inserted }} 人、更新 {{ importResult.updated }} 人；
+          {{ importResult.notInFile }} 名在读学生不在表中，已保持原状
+        </template>
+        <template v-else>成功导入 {{ importResult.inserted }} 人</template>
+        <template v-if="importResult.failed">，失败 {{ importResult.failed }} 行：
           <div v-for="e in importResult.errors" :key="e.row" style="font-size: 12px">
             第 {{ e.row }} 行：{{ e.reason }}
           </div>
@@ -152,7 +170,8 @@ function dormText(row: any) {
   if (!b && !r && !d) return ''
   return [b, r].filter(Boolean).join('') + (d ? ` / ${d}床` : '')
 }
-const importResult = ref<{ inserted: number; failed: number; errors: { row: number; reason: string }[] } | null>(null)
+const importResult = ref<{ inserted: number; updated?: number; notInFile?: number; failed: number; errors: { row: number; reason: string }[] } | null>(null)
+const importMode = ref<'append' | 'replace'>('append')
 
 function className(id: number) {
   return classes.value.find((c: any) => c.id === id)?.name ?? id
@@ -235,8 +254,11 @@ async function doImport() {
   try {
     const fd = new FormData()
     fd.append('file', importFile.value)
+    fd.append('mode', importMode.value)
     importResult.value = await apiForm('/api/admin/student/import', fd)
-    ElMessage.success(`导入完成：成功 ${importResult.value.inserted} 人`)
+    ElMessage.success(importMode.value === 'replace'
+      ? `刷新完成：新增 ${importResult.value.inserted} 人 / 更新 ${importResult.value.updated} 人`
+      : `导入完成：成功 ${importResult.value.inserted} 人`)
     await load()
   } finally {
     importing.value = false

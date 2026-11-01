@@ -5,10 +5,14 @@ import com.aischool.server.entity.Clazz;
 import com.aischool.server.entity.Grade;
 import com.aischool.server.entity.Student;
 import com.aischool.server.entity.Term;
+import com.aischool.server.entity.WalkClass;
+import com.aischool.server.entity.WalkClassStudent;
 import com.aischool.server.mapper.ClazzMapper;
 import com.aischool.server.mapper.GradeMapper;
 import com.aischool.server.mapper.StudentMapper;
 import com.aischool.server.mapper.TermMapper;
+import com.aischool.server.mapper.WalkClassMapper;
+import com.aischool.server.mapper.WalkClassStudentMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +29,7 @@ import java.util.Map;
  * 学年一键滚动（批28）：年级按 id 序（=名册导入的年级序）逐级上升，
  * 最高年级学生标记毕业退场、班级原地保留作历史；晋升班级换挂新学年年级行并按新年级名改名；
  * 学生 class_id 不动即随班升级，任课/历史数据零迁移。新学年自动建两学期并切换当前学期。
+ * 走班（教学班）是学年教学安排，随滚动整体清空（新学年重新导入）。
  */
 @Service
 @RequiredArgsConstructor
@@ -34,6 +39,8 @@ public class SchoolYearService {
     private final ClazzMapper clazzMapper;
     private final StudentMapper studentMapper;
     private final TermMapper termMapper;
+    private final WalkClassMapper walkClassMapper;
+    private final WalkClassStudentMapper walkStudentMapper;
 
     /** 滚动方案（dry-run）：年级链/毕业规模/新学期计划，管理端先看后滚 */
     public Map<String, Object> preview() {
@@ -127,6 +134,13 @@ public class SchoolYearService {
             warnings.add("未找到旧学年（" + oldYear + "）的学期，滚动不会自动建学期，请到「学期」页签手动创建新学年学期");
         }
         warnings.add("班主任与任课关系随班保留（班级 id 不变），如需调整请到「年级与班级」/「教师与任课」处理");
+        // 走班（批75）是学年教学安排：映射的是本学年年级的学生，随滚动整体作废，新学年重新导入
+        long walkClasses = walkClassMapper.selectCount(null);
+        if (walkClasses > 0) {
+            long walkStudents = walkStudentMapper.selectCount(null);
+            warnings.add("走班（教学班）是学年教学安排，滚动将清空全部走班分班（" + walkClasses
+                    + " 个走班 / " + walkStudents + " 条学生映射）；新学年开学后请到「走班分班」重新导入");
+        }
 
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("oldYear", oldYear);
@@ -231,7 +245,16 @@ public class SchoolYearService {
             }
         }
 
-        // 5) 清掉滚动后空了的旧年级行（晋升源）；毕业年级行保留
+        // 5) 清空走班（教学班）：走班映射的是本学年年级的学生，滚动后整体作废，新学年重新导入。
+        //    「学年相关安排表」清单：凡随学年整体失效的安排（目前仅走班两表）都必须挂进本步骤，
+        //    后续新增此类表时同样在此清空，否则旧映射会污染新学年的排名分组与教师端入口
+        long clearedWalkClasses = walkClassMapper.selectCount(null);
+        if (clearedWalkClasses > 0) {
+            walkStudentMapper.delete(new LambdaQueryWrapper<WalkClassStudent>());
+            walkClassMapper.delete(new LambdaQueryWrapper<WalkClass>());
+        }
+
+        // 6) 清掉滚动后空了的旧年级行（晋升源）；毕业年级行保留
         int removedOldGrades = 0;
         for (Map<String, Object> p : gradePlans) {
             if ("PROMOTE".equals(p.get("action"))) {
@@ -251,6 +274,7 @@ public class SchoolYearService {
         result.put("graduatedStudents", graduatedStudents);
         result.put("newGrades", newGradeNames.size());
         result.put("newTerms", newTerms);
+        result.put("clearedWalkClasses", clearedWalkClasses);
         result.put("removedOldGrades", removedOldGrades);
         return result;
     }

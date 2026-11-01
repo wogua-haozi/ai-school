@@ -298,6 +298,16 @@ public class WalkClassService {
         return out;
     }
 
+    /** 清空全部走班与映射（取消走班制/学年重置用）：成绩与微光不引用走班表，历史数据不受影响 */
+    @Transactional(rollbackFor = Exception.class)
+    public Map<String, Object> clearAll() {
+        long walks = walkClassMapper.selectCount(null);
+        long students = walkStudentMapper.selectCount(null);
+        walkStudentMapper.delete(new LambdaQueryWrapper<WalkClassStudent>());
+        walkClassMapper.delete(new LambdaQueryWrapper<WalkClass>());
+        return Map.of("clearedWalks", walks, "clearedStudents", students);
+    }
+
     // ───────────────── 查询小件（成绩/微光/Meta 用） ─────────────────
 
     public WalkClass requireWalk(Long id) {

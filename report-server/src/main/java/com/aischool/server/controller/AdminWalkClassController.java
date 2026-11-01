@@ -9,6 +9,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -43,6 +44,13 @@ public class AdminWalkClassController {
     public ApiResponse<List<Map<String, Object>>> students(@PathVariable Long id) {
         checkAdmin();
         return ApiResponse.ok(walkClassService.rosterView(id));
+    }
+
+    /** 清空全部走班（取消走班制用）：走班与学生映射两表全删；成绩/微光历史不引用走班，不受影响 */
+    @DeleteMapping("/clear")
+    public ApiResponse<Map<String, Object>> clear() {
+        checkAdmin();
+        return ApiResponse.ok(walkClassService.clearAll());
     }
 
     /** 预览：校验并给出与现状的差异（不落库）；表内有错则逐行列出 */

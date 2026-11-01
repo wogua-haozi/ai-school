@@ -3,6 +3,7 @@
     <div class="toolbar">
       <el-button type="primary" @click="openImport">导入走班分班表</el-button>
       <el-button @click="downloadTemplate">下载模板</el-button>
+      <el-button type="danger" plain @click="clearAll">清空走班</el-button>
     </div>
 
     <el-table :data="walks" size="small">
@@ -132,6 +133,15 @@ async function doCommit() {
   } finally {
     committing.value = false
   }
+}
+
+async function clearAll() {
+  await ElMessageBox.confirm(
+    '清空全部走班分班？适用于取消走班制。已有成绩与微光不受影响；新学期重新走班时再导入分班表即可。',
+    '清空走班', { type: 'warning', confirmButtonText: '清空', cancelButtonText: '取消' })
+  const d = await api<any>('/api/admin/walk-class/clear', { method: 'DELETE' })
+  ElMessage.success(`已清空 ${d.clearedWalks} 个走班 / ${d.clearedStudents} 条学生映射`)
+  await load()
 }
 
 async function load() {

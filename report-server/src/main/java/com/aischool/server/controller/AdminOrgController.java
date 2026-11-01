@@ -423,10 +423,18 @@ public class AdminOrgController {
         return ApiResponse.ok();
     }
 
-    /** 新生 Excel 批量导入（管理员，multipart）：逐行校验，合法行入库，问题行返回明细（部分成功） */
+    /** 学生 Excel 导入（管理员，multipart）。mode=append（默认，新生导入）：逐行校验，合法行入库，问题行跳过（部分成功）；
+     *  mode=replace（名册覆盖刷新）：按学号 upsert——已有的更新姓名/性别/班级/家长/宿舍，没有的新增；
+     *  状态/入学日期/照片不动（名册不含业务状态），表中没有的在读学生保持原状仅计数提示，
+     *  任一行有误整体不导入（同任课/走班替换口径，防半新半旧） */
     @PostMapping("/student/import")
-    public ApiResponse<Map<String, Object>> importStudents(@RequestParam("file") MultipartFile file) {
+    public ApiResponse<Map<String, Object>> importStudents(@RequestParam("file") MultipartFile file,
+                                                           @RequestParam(defaultValue = "append") String mode) {
         checkAdmin();
+        boolean replace = "replace".equals(mode);
+        if (!replace && !"append".equals(mode)) {
+            throw new BizException(400, "mode 只能是 append 或 replace");
+        }
         if (file == null || file.isEmpty()) {
             throw new BizException(400, "请选择 Excel 文件");
         }
@@ -443,14 +451,14 @@ public class AdminOrgController {
                 .collect(Collectors.toMap(Clazz::getName, Clazz::getId, (a, b) -> a));
         Set<String> seen = new HashSet<>();
         List<Map<String, Object>> errors = new java.util.ArrayList<>();
-        int inserted = 0;
+        List<ExcelStudentHelper.StudentRow> valid = new java.util.ArrayList<>();
         for (ExcelStudentHelper.StudentRow r : rows) {
             String reason = null;
             if (r.studentNo().isBlank()) {
                 reason = "学号为空";
             } else if (seen.contains(r.studentNo())) {
                 reason = "学号在文件内重复";
-            } else if (studentMapper.selectCount(new LambdaQueryWrapper<Student>()
+            } else if (!replace && studentMapper.selectCount(new LambdaQueryWrapper<Student>()
                     .eq(Student::getStudentNo, r.studentNo())) > 0) {
                 reason = "学号已存在";
             } else if (r.name().isBlank()) {
@@ -465,6 +473,32 @@ public class AdminOrgController {
                 continue;
             }
             seen.add(r.studentNo());
+            valid.add(r);
+        }
+        if (replace && !errors.isEmpty()) {
+            Map<String, Object> first = errors.get(0);
+            throw new BizException(400, "表内有 " + errors.size() + " 行问题，整体未导入（第 "
+                    + first.get("row") + " 行：" + first.get("reason") + "）");
+        }
+        int inserted = 0;
+        int updated = 0;
+        for (ExcelStudentHelper.StudentRow r : valid) {
+            Student exist = replace ? studentMapper.selectOne(new LambdaQueryWrapper<Student>()
+                    .eq(Student::getStudentNo, r.studentNo()).last("LIMIT 1")) : null;
+            if (exist != null) {
+                studentMapper.update(null, new LambdaUpdateWrapper<Student>()
+                        .eq(Student::getId, exist.getId())
+                        .set(Student::getName, r.name())
+                        .set(Student::getGender, "男".equals(r.gender()) ? "M" : "女".equals(r.gender()) ? "F" : null)
+                        .set(Student::getClassId, classIds.get(r.className()))
+                        .set(Student::getGuardianName, r.guardianName().isBlank() ? null : r.guardianName())
+                        .set(Student::getGuardianPhone, r.guardianPhone().isBlank() ? null : r.guardianPhone())
+                        .set(Student::getDormBuilding, r.dormBuilding().isBlank() ? null : r.dormBuilding())
+                        .set(Student::getDormRoom, r.dormRoom().isBlank() ? null : r.dormRoom())
+                        .set(Student::getDormBed, r.dormBed().isBlank() ? null : r.dormBed()));
+                updated++;
+                continue;
+            }
             Student s = new Student();
             s.setStudentNo(r.studentNo());
             s.setName(r.name());
@@ -481,6 +515,13 @@ public class AdminOrgController {
         }
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("inserted", inserted);
+        if (replace) {
+            // 表中没有的在读学生：保持原状（防止只传部分年级名册把其他年级刷掉），只提示数量
+            long notInFile = studentMapper.selectCount(new LambdaQueryWrapper<Student>()
+                    .eq(Student::getStatus, "在读").notIn(Student::getStudentNo, seen));
+            data.put("updated", updated);
+            data.put("notInFile", notInFile);
+        }
         data.put("failed", errors.size());
         data.put("errors", errors);
         return ApiResponse.ok(data);
