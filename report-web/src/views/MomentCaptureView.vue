@@ -58,9 +58,9 @@
         </div>
       </div>
 
-      <!-- ③ 关联学生 -->
+      <!-- ③ 关联学生（批75：走班教师可选我的走班，名册按行政班标注） -->
       <div class="app-card sec">
-        <van-cell title="班级" is-link :value="curClassName || '选择班级'" @click="clsOpen = true" />
+        <van-cell title="班级 / 走班" is-link :value="curClassName || '选择班级'" @click="clsOpen = true" />
         <div class="app-sec" style="margin: 8px 0 10px">闪光学生（{{ picked.size }}）</div>
         <div class="stu-search">
           <van-icon name="search" />
@@ -70,11 +70,11 @@
           <button v-for="s in filteredStudents" :key="s.id" class="stu" :class="{ on: picked.has(s.id) }"
             type="button" @click="toggle(s.id)">
             <span class="ava" :style="{ background: avaColor(s.name) }">{{ s.name.charAt(0) }}</span>
-            <span class="name">{{ s.name }}</span>
+            <span class="name">{{ s.name }}{{ isWalk && s.className ? ' · ' + s.className : '' }}</span>
             <van-icon class="check" name="checked" />
           </button>
         </div>
-        <div v-if="!students.length" class="stu-none">本班暂无学生</div>
+        <div v-if="!students.length" class="stu-none">{{ isWalk ? '本走班暂无学生' : '本班暂无学生' }}</div>
         <div v-else-if="!filteredStudents.length" class="stu-none">没有匹配的学生</div>
       </div>
 
@@ -128,13 +128,21 @@ const donePhoto = ref('')
 const doneCount = ref(0)
 
 const classes = ref<{ id: number; name: string }[]>([])
-const classId = ref<number>()
-const students = ref<{ id: number; name: string }[]>([])
+/* 批75 走班分组：选择器值用 'w{id}' 防与真实班 id 相撞；走班提交走 /api/moment/walk（后端按行政班拆多条） */
+const walkClasses = ref<{ id: number; name: string; subjectName?: string }[]>([])
+const sel = ref('')   // '' | '班id' | 'w走班id'
+const isWalk = computed(() => sel.value.startsWith('w'))
+const classId = computed(() => (!isWalk.value && sel.value) ? Number(sel.value) : undefined)
+const walkId = computed(() => isWalk.value ? Number(sel.value.slice(1)) : undefined)
+const students = ref<{ id: number; name: string; className?: string }[]>([])
 const clsOpen = ref(false)
 const fileInput = ref<HTMLInputElement>()
 
-const clsColumns = computed(() => classes.value.map((c) => ({ text: c.name, value: c.id })))
-const curClassName = computed(() => classes.value.find((c) => c.id === classId.value)?.name)
+const clsColumns = computed(() => [
+  ...classes.value.map((c) => ({ text: c.name, value: String(c.id) })),
+  ...walkClasses.value.map((w) => ({ text: `${w.subjectName ?? ''}走班 · ${w.name}`, value: 'w' + w.id })),
+])
+const curClassName = computed(() => clsColumns.value.find((c) => c.value === sel.value)?.text)
 const stuKeyword = ref('')
 const filteredStudents = computed(() => {
   const k = stuKeyword.value.trim()
@@ -204,10 +212,10 @@ function toggleTag(name: string) {
 }
 
 /** Vant4 confirm 载荷：{selectedValues, selectedOptions, selectedIndexes}，取值走 selectedOptions */
-function onCls(ev: { selectedOptions?: { value: number }[] }) {
-  const value = ev.selectedOptions?.[0]?.value
-  if (classId.value !== value) {
-    classId.value = value
+function onCls(ev: { selectedOptions?: { value: string }[] }) {
+  const value = ev.selectedOptions?.[0]?.value ?? ''
+  if (sel.value !== value) {
+    sel.value = value
     picked.value = new Set()
     loadStudents()
   }
@@ -215,6 +223,11 @@ function onCls(ev: { selectedOptions?: { value: number }[] }) {
 }
 
 async function loadStudents() {
+  if (walkId.value) {
+    students.value = await api<{ id: number; name: string; className?: string }[]>(
+      `/api/meta/walk-class-students?walkClassId=${walkId.value}`)
+    return
+  }
   if (!classId.value) return
   const d = await api<{ records: { id: number; name: string }[] }>(
     `/api/student/list?classId=${classId.value}&page=1&size=100`)
@@ -233,11 +246,13 @@ async function submit() {
   try {
     const form = new FormData()
     for (const f of photoFiles.value) form.append('photos', f)
-    form.append('classId', String(classId.value))
+    // 批75 走班：walkClassId 提交（后端按学生行政班拆多条班级墙记录，照片共享）
+    if (walkId.value) form.append('walkClassId', String(walkId.value))
+    else form.append('classId', String(classId.value))
     for (const t of tagPicked.value) form.append('sceneTag', t)
     if (note.value.trim()) form.append('note', note.value.trim())
     for (const id of picked.value) form.append('studentIds', String(id))
-    await apiForm('/api/moment', form)
+    await apiForm(walkId.value ? '/api/moment/walk' : '/api/moment', form)
     donePhoto.value = previews.value[0]
     doneCount.value = picked.value.size
     done.value = true
@@ -305,8 +320,12 @@ async function confirmAddTag() {
 onMounted(async () => {
   loadTags()
   classes.value = await api<{ id: number; name: string }[]>('/api/meta/my-classes')
+  try {
+    walkClasses.value = await api<{ id: number; name: string; subjectName?: string }[]>('/api/meta/walk-classes')
+  } catch { /* 无走班数据不影响常规采集 */ }
   const fromQuery = Number(route.query.classId)
-  classId.value = classes.value.find((c) => c.id === fromQuery)?.id ?? classes.value[0]?.id
+  sel.value = classes.value.find((c) => c.id === fromQuery) ? String(fromQuery)
+    : (classes.value[0] ? String(classes.value[0].id) : (walkClasses.value[0] ? 'w' + walkClasses.value[0].id : ''))
   await loadStudents()
 })
 </script>

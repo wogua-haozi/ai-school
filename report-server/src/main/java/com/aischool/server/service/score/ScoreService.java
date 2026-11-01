@@ -24,6 +24,8 @@ import com.aischool.server.security.UserPrincipal;
 import com.aischool.server.service.auth.DataScopeService;
 import com.aischool.server.service.auth.PermissionService;
 import com.aischool.server.service.excel.ExcelScoreHelper;
+import com.aischool.server.service.walk.WalkClassService;
+import com.aischool.server.entity.WalkClass;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import lombok.RequiredArgsConstructor;
@@ -72,6 +74,7 @@ public class ScoreService {
     private final DataScopeService dataScope;
     private final PermissionService permissionService;
     private final ExcelScoreHelper excel;
+    private final WalkClassService walkClassService;
 
     // ───────────────── 考试 ─────────────────
 
@@ -402,11 +405,17 @@ public class ScoreService {
 
     /** 单科写（classId 空=按 studentId 跨班校验）；返回写入条数，不触 recompute（调用方统一收尾） */
     private int writeRows(UserPrincipal user, Long examId, Long subjectId, Long classId, List<RowReq> rows) {
-        ExamSubject es = requireExamSubject(examId, subjectId);
-        Map<Long, Student> roster = classId != null
+        Map<Long, Student> rosterById = classId != null
                 ? roster(classId).stream().collect(Collectors.toMap(Student::getId, Function.identity()))
-                : Map.of();
-        List<Long> visible = classId == null ? dataScope.visibleClassIds(user) : null;
+                : null;
+        return writeRows(user, examId, subjectId, rosterById, "该班级", rows);
+    }
+
+    /** 通用单科写：rosterById 非空=名册限定模式（行政班/走班共用，学生必须在名册内）；空=年级模式按可见班校验 */
+    private int writeRows(UserPrincipal user, Long examId, Long subjectId, Map<Long, Student> rosterById,
+                          String scopeLabel, List<RowReq> rows) {
+        ExamSubject es = requireExamSubject(examId, subjectId);
+        List<Long> visible = rosterById == null ? dataScope.visibleClassIds(user) : null;
         Map<Long, Score> existing = scoreMapper.selectList(new LambdaQueryWrapper<Score>()
                         .eq(Score::getExamId, examId).eq(Score::getSubjectId, subjectId))
                 .stream().collect(Collectors.toMap(Score::getStudentId, Function.identity(), (a, b) -> a));
@@ -415,13 +424,13 @@ public class ScoreService {
         }
         int saved = 0;
         for (RowReq r : rows) {
-            Student st = classId != null ? roster.get(r.getStudentId())
+            Student st = rosterById != null ? rosterById.get(r.getStudentId())
                     : r.getStudentId() == null ? null : studentMapper.selectById(r.getStudentId());
             if (st == null) {
-                throw new BizException(400, classId != null
-                        ? "学生不在该班级: " + r.getStudentId() : "学生不存在: " + r.getStudentId());
+                throw new BizException(400, rosterById != null
+                        ? "学生不在" + scopeLabel + ": " + r.getStudentId() : "学生不存在: " + r.getStudentId());
             }
-            if (classId == null && visible != null && !visible.contains(st.getClassId())) {
+            if (rosterById == null && visible != null && !visible.contains(st.getClassId())) {
                 throw new BizException(403, "无权录入该学生所在班级: " + st.getName());
             }
             Score old = existing.get(r.getStudentId());
@@ -653,6 +662,164 @@ public class ScoreService {
         return excel.template(roster(classId), orderedNames);
     }
 
+    // ───────────────── 批75 走班模式（数学等走班学科按走班名册录入） ─────────────────
+
+    /** 走班成绩单：名册=走班学生（附行政班名）；editable=走班教师/管理面；排名列同批63口径（教师侧不下发） */
+    public Map<String, Object> listWalkScores(UserPrincipal user, Long examId, Long walkClassId) {
+        requireScoreAccess(user);
+        WalkClass walk = walkClassService.requireWalk(walkClassId);
+        Exam exam = requireExam(examId);
+        checkExamGrade(exam, null, walk.getGradeId());
+        Long subjectId = walk.getSubjectId();
+        ExamSubject es = requireExamSubject(examId, subjectId);
+        Map<Long, String> classNames = clazzMapper.selectList(null).stream()
+                .collect(Collectors.toMap(Clazz::getId, Clazz::getName, (a, b) -> a));
+        Map<Long, Score> scores = scoreMapper.selectList(new LambdaQueryWrapper<Score>()
+                        .eq(Score::getExamId, examId).eq(Score::getSubjectId, subjectId))
+                .stream().collect(Collectors.toMap(Score::getStudentId, Function.identity(), (a, b) -> a));
+        boolean rankVisible = canSeeRank(user);
+        boolean editable = canUploadWalk(user, exam, walk);
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (Student st : walkClassService.walkRoster(walkClassId)) {
+            Score sc = scores.get(st.getId());
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("studentId", st.getId());
+            m.put("studentNo", st.getStudentNo());
+            m.put("name", st.getName());
+            m.put("className", classNames.getOrDefault(st.getClassId(), "—"));
+            m.put("score", sc != null ? sc.getScore() : null);
+            m.put("grade", sc != null ? sc.getGrade() : null);
+            m.put("classRank", !rankVisible ? null : sc != null ? sc.getClassRank() : null);
+            m.put("gradeRank", !rankVisible ? null : sc != null ? sc.getGradeRank() : null);
+            rows.add(m);
+        }
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("fullScore", es.getFullScore());
+        data.put("editable", editable);
+        data.put("gradeEditable", editable); // 走班教师可同时录本学科分数与等级
+        data.put("canSeeRank", rankVisible);
+        data.put("rows", rows);
+        return data;
+    }
+
+    /** 走班批量录入：subjectId 必须是走班学科；学生限本走班名册 */
+    public Map<String, Object> entryWalk(UserPrincipal user, Long examId, Long walkClassId,
+                                         Long subjectId, List<RowReq> rows) {
+        Exam exam = requireExam(examId);
+        WalkClass walk = walkClassService.requireWalk(walkClassId);
+        if (!walk.getSubjectId().equals(subjectId)) {
+            throw new BizException(400, "录入学科与该走班学科不一致");
+        }
+        checkWalkUpload(user, exam, walk);
+        checkExamGrade(exam, null, walk.getGradeId());
+        Map<Long, Student> rosterById = walkClassService.walkRoster(walkClassId).stream()
+                .collect(Collectors.toMap(Student::getId, Function.identity()));
+        int saved = writeRows(user, examId, subjectId, rosterById, "该走班", rows);
+        recompute(examId);
+        return Map.of("saved", saved);
+    }
+
+    /** 走班 Excel 导入：模板=走班名册+本学科一列（数学/数学等级）；混入非本走班学号整单拒绝 */
+    public Map<String, Object> importWalkExcel(UserPrincipal user, Long examId, Long walkClassId,
+                                               MultipartFile file) {
+        Exam exam = requireExam(examId);
+        WalkClass walk = walkClassService.requireWalk(walkClassId);
+        checkWalkUpload(user, exam, walk);
+        checkExamGrade(exam, null, walk.getGradeId());
+        Long subjectId = walk.getSubjectId();
+        ExamSubject es = requireExamSubject(examId, subjectId);
+        String subjectName = subjectMapper.selectById(subjectId).getName();
+        List<ExcelScoreHelper.ScoreRow> parsed;
+        try (var in = file.getInputStream()) {
+            parsed = excel.read(in, List.of(subjectName));
+        } catch (BizException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BizException(400, "读取文件失败: " + e.getMessage());
+        }
+        Map<String, Student> byNo = walkClassService.walkRoster(walkClassId).stream()
+                .collect(Collectors.toMap(Student::getStudentNo, Function.identity(), (a, b) -> a));
+        List<RowReq> rows = new ArrayList<>();
+        List<Map<String, Object>> skipped = new ArrayList<>();
+        List<String> foreignNos = new ArrayList<>();
+        for (ExcelScoreHelper.ScoreRow r : parsed) {
+            Student st = byNo.get(r.studentNo());
+            if (st == null) {
+                foreignNos.add(r.studentNo());
+                continue;
+            }
+            BigDecimal v = r.scores().get(subjectName);
+            String g = normalizeGrade(r.grades().get(subjectName));
+            if (g != null && !gradeOk(g)) {
+                skipped.add(Map.of("studentNo", r.studentNo(), "name", r.name(), "subject", subjectName + "等级",
+                        "reason", "等级应为 A~D 可带 +/-（如 A+、B-），收到: " + r.grades().get(subjectName)));
+                g = null;
+            }
+            if (v != null && (v.compareTo(BigDecimal.ZERO) < 0 || v.compareTo(es.getFullScore()) > 0)) {
+                skipped.add(Map.of("studentNo", r.studentNo(), "name", r.name(), "subject", subjectName,
+                        "reason", "超出 [0, " + es.getFullScore() + "]"));
+                v = null;
+            }
+            if (r.totalGrade() != null) {
+                skipped.add(Map.of("studentNo", r.studentNo(), "name", r.name(), "subject", "总分等级",
+                        "reason", "走班导入只处理本学科列，总分等级请走行政班导入"));
+            }
+            if (v != null || g != null) { // 双空行不生成 RowReq（writeRows 全量语义，空行会误删已录成绩）
+                RowReq row = new RowReq();
+                row.setStudentId(st.getId());
+                row.setScore(v);
+                row.setGrade(g);
+                rows.add(row);
+            }
+        }
+        if (!foreignNos.isEmpty()) {
+            throw new BizException(400, "以下学号不属于该走班，为防误导整单已拒绝导入: " + String.join("、", foreignNos));
+        }
+        int saved = writeRows(user, examId, subjectId, walkClassService.walkRoster(walkClassId).stream()
+                .collect(Collectors.toMap(Student::getId, Function.identity())), "该走班", rows);
+        recompute(examId);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("saved", saved);
+        result.put("skipped", skipped);
+        return result;
+    }
+
+    /** 走班导入模板：走班名册 + 本学科分数/等级列 */
+    public byte[] templateWalk(UserPrincipal user, Long examId, Long walkClassId) {
+        requireScoreAccess(user);
+        WalkClass walk = walkClassService.requireWalk(walkClassId);
+        Exam exam = requireExam(examId);
+        checkExamGrade(exam, null, walk.getGradeId());
+        requireExamSubject(examId, walk.getSubjectId());
+        String subjectName = subjectMapper.selectById(walk.getSubjectId()).getName();
+        // 走班导入只处理本学科列，不带总分等级列（行政班导入才处理总分）
+        return excel.template(walkClassService.walkRoster(walkClassId), List.of(subjectName), false);
+    }
+
+    /** 批75 走班可录判定：走班教师（录入窗口开放时）/管理员/书记/绑定该年级的级长（窗口开放） */
+    private boolean canUploadWalk(UserPrincipal user, Exam exam, WalkClass walk) {
+        String role = user.role();
+        if ("ADMIN".equals(role) || "SECRETARY".equals(role)) {
+            return true;
+        }
+        if (walk.getTeacherId().equals(user.userId())) {
+            return examOpen(exam);
+        }
+        if ("GRADE_LEADER".equals(role) && examOpen(exam)) {
+            List<Long> visible = dataScope.visibleClassIds(user);
+            return visible != null && !visible.isEmpty()
+                    && clazzMapper.selectBatchIds(visible).stream()
+                            .anyMatch(c -> walk.getGradeId().equals(c.getGradeId()));
+        }
+        return false;
+    }
+
+    private void checkWalkUpload(UserPrincipal user, Exam exam, WalkClass walk) {
+        if (!canUploadWalk(user, exam, walk)) {
+            throw new BizException(403, "仅该走班教师（录入窗口开放时）或管理员/书记可录入走班成绩");
+        }
+    }
+
     // ───────────────── 排名与最高分 ─────────────────
 
     /**
@@ -671,7 +838,15 @@ public class ScoreService {
 
         for (ExamSubject es : subjects) {
             List<Score> rows = all.stream().filter(s -> s.getSubjectId().equals(es.getSubjectId())).toList();
-            assignRanks(rows, classOf);
+            // 批75② 走班学科（七年级数学）班级名次按走班排：有走班映射的学生按走班分组，其余按行政班
+            // （组键错开两个 id 空间：行政班 id +1_000_000，走班 id 原值）
+            Map<Long, Long> walkOf = walkClassService.studentWalkOf(es.getSubjectId());
+            java.util.function.ToLongFunction<Score> groupOf = walkOf.isEmpty()
+                    ? s -> classOf.getOrDefault(s.getStudentId(), -1L) + 1_000_000L
+                    : s -> walkOf.containsKey(s.getStudentId())
+                        ? walkOf.get(s.getStudentId())
+                        : classOf.getOrDefault(s.getStudentId(), -1L) + 1_000_000L;
+            assignRanks(rows, groupOf);
             rows.forEach(scoreMapper::updateById);
             BigDecimal max = rows.stream().map(Score::getScore).max(Comparator.naturalOrder()).orElse(null);
             if (!eq(max, es.getClassMax()) || !eq(max, es.getGradeMax())) {
@@ -698,17 +873,17 @@ public class ScoreService {
         }
     }
 
-    /** 竞争排名：先全体后班内；同分同名次 */
-    private void assignRanks(List<Score> rows, Map<Long, Long> classOf) {
+    /** 竞争排名：先全体后组内（组=走班或行政班，批75② 数学走班口径）；同分同名次 */
+    private void assignRanks(List<Score> rows, java.util.function.ToLongFunction<Score> groupOf) {
         List<Score> sorted = rows.stream()
                 .sorted(Comparator.comparing(Score::getScore).reversed()
                         .thenComparing(Score::getStudentId))
                 .toList();
         assign(sorted, Score::setGradeRank);
-        Map<Long, List<Score>> byClass = sorted.stream()
-                .collect(Collectors.groupingBy(s -> classOf.getOrDefault(s.getStudentId(), -1L),
+        Map<Long, List<Score>> byGroup = sorted.stream()
+                .collect(Collectors.groupingBy(s -> groupOf.applyAsLong(s),
                         LinkedHashMap::new, Collectors.toList()));
-        byClass.values().forEach(classRows -> assign(classRows, Score::setClassRank));
+        byGroup.values().forEach(groupRows -> assign(groupRows, Score::setClassRank));
     }
 
     private void assign(List<Score> sorted, java.util.function.BiConsumer<Score, Integer> setter) {

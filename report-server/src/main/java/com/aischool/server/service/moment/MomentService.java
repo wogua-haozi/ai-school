@@ -6,6 +6,7 @@ import com.aischool.server.entity.MomentStudent;
 import com.aischool.server.entity.MomentTag;
 import com.aischool.server.entity.Student;
 import com.aischool.server.entity.User;
+import com.aischool.server.entity.WalkClass;
 import com.aischool.server.mapper.MomentMapper;
 import com.aischool.server.mapper.MomentStudentMapper;
 import com.aischool.server.mapper.MomentTagMapper;
@@ -15,6 +16,7 @@ import com.aischool.server.security.UserPrincipal;
 import com.aischool.server.service.auth.DataScopeService;
 import com.aischool.server.service.coin.CoinLedgerService;
 import com.aischool.server.service.report.PdfStoreService;
+import com.aischool.server.service.walk.WalkClassService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import lombok.RequiredArgsConstructor;
@@ -52,45 +54,15 @@ public class MomentService {
     private final DataScopeService dataScope;
     private final PdfStoreService pdfStore;
     private final CoinLedgerService coinLedger;
+    private final WalkClassService walkClassService;
 
     /** 创建一条微光（批62 多图）：照片存 MinIO（moment/{classId}/{uuid}.{ext}，1~9 张，
         photo_url 逗号分隔）+ 主表 + 学生关联。批71 sceneTag 多选，/ 分隔存储 */
     @Transactional
     public Map<String, Object> create(UserPrincipal user, Long classId, List<Long> studentIds,
                                       List<String> sceneTag, String note, List<MultipartFile> photos) {
-        List<MultipartFile> valid = photos == null ? List.of()
-                : photos.stream().filter(p -> p != null && !p.isEmpty()).toList();
-        if (valid.isEmpty()) {
-            throw new BizException(400, "请先拍照或选择照片");
-        }
-        if (valid.size() > 9) {
-            throw new BizException(400, "一次最多上传 9 张照片");
-        }
-        for (MultipartFile photo : valid) {
-            if (photo.getSize() > MAX_SIZE) {
-                throw new BizException(400, "照片不能超过 10MB");
-            }
-            String original = photo.getOriginalFilename() == null ? "" : photo.getOriginalFilename();
-            String ext = original.contains(".")
-                    ? original.substring(original.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT) : "";
-            if (!ext.equals("jpg") && !ext.equals("jpeg") && !ext.equals("png")) {
-                throw new BizException(400, "仅支持 jpg/jpeg/png 格式");
-            }
-        }
-        List<String> tags = sceneTag == null ? List.of() : sceneTag.stream()
-                .filter(t -> t != null && !t.isBlank()).map(String::trim).distinct().toList();
-        if (tags.isEmpty()) {
-            throw new BizException(400, "请选择场景标签");
-        }
-        if (tags.size() > 5) {
-            throw new BizException(400, "场景标签最多选 5 个");
-        }
-        if (tags.stream().anyMatch(t -> t.length() > 32)) {
-            throw new BizException(400, "单个标签不能超过 32 字");
-        }
-        if (note != null && note.length() > 500) {
-            throw new BizException(400, "备注不能超过 500 字");
-        }
+        List<MultipartFile> valid = validatePhotos(photos);
+        List<String> tags = validateTagsAndNote(sceneTag, note);
         if (studentIds == null || studentIds.isEmpty()) {
             throw new BizException(400, "请选择至少一名学生");
         }
@@ -138,6 +110,118 @@ public class MomentService {
             coinLedger.income(sid, LocalDate.now(), "微光", m.getId(), "微光信箱", BigDecimal.ONE);
         }
         return Map.of("momentId", m.getId());
+    }
+
+    /** 批75 走班微光：走班课堂随手拍——学生分属多个行政班，按行政班分组建多条 Moment
+        （班级墙/学生档案沿用原展示模型），照片对象只上传一份、多行共享 photo_url，每生+1扬长币口径不变 */
+    @Transactional
+    public Map<String, Object> createWalk(UserPrincipal user, Long walkClassId, List<Long> studentIds,
+                                          List<String> sceneTag, String note, List<MultipartFile> photos) {
+        List<MultipartFile> valid = validatePhotos(photos);
+        List<String> tags = validateTagsAndNote(sceneTag, note);
+        if (studentIds == null || studentIds.isEmpty()) {
+            throw new BizException(400, "请选择至少一名学生");
+        }
+        rejectParent(user);
+        WalkClass walk = walkClassService.requireWalk(walkClassId);
+        if (!user.userId().equals(walk.getTeacherId()) && !"ADMIN".equals(user.role())) {
+            throw new BizException(403, "仅该走班教师或管理员可发布走班微光");
+        }
+        List<Student> students = studentMapper.selectBatchIds(studentIds);
+        if (students.size() != studentIds.size()) {
+            throw new BizException(400, "存在无效学生");
+        }
+        java.util.Set<Long> roster = walkClassService.walkRoster(walkClassId).stream()
+                .map(Student::getId).collect(Collectors.toSet());
+        if (students.stream().anyMatch(s -> !roster.contains(s.getId()))) {
+            throw new BizException(400, "存在不属于该走班的学生");
+        }
+        if (students.stream().anyMatch(s -> s.getClassId() == null)) {
+            throw new BizException(400, "存在未分配行政班的学生，无法发布");
+        }
+
+        List<String> objectNames = new ArrayList<>();
+        for (MultipartFile photo : valid) {
+            byte[] bytes;
+            try {
+                bytes = photo.getBytes();
+            } catch (Exception e) {
+                throw new BizException(400, "读取照片失败");
+            }
+            String original = photo.getOriginalFilename() == null ? "" : photo.getOriginalFilename();
+            String ext = original.contains(".")
+                    ? original.substring(original.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT) : "";
+            String objectName = "moment/w" + walkClassId + "/" + UUID.randomUUID() + "." + ext;
+            pdfStore.upload(objectName, new ByteArrayInputStream(bytes), bytes.length, photo.getContentType());
+            objectNames.add(objectName);
+        }
+        String photoUrl = String.join(",", objectNames);
+
+        Map<Long, List<Student>> byClass = students.stream()
+                .collect(Collectors.groupingBy(Student::getClassId));
+        List<Long> momentIds = new ArrayList<>();
+        for (var en : byClass.entrySet()) {
+            Moment m = new Moment();
+            m.setTeacherId(user.userId());
+            m.setClassId(en.getKey());
+            m.setPhotoUrl(photoUrl);
+            m.setSceneTag(String.join("/", tags));
+            m.setNote(note == null ? null : note.trim());
+            m.setSource("TEACHER");
+            momentMapper.insert(m);
+            for (Student s : en.getValue()) {
+                MomentStudent ms = new MomentStudent();
+                ms.setMomentId(m.getId());
+                ms.setStudentId(s.getId());
+                momentStudentMapper.insert(ms);
+                coinLedger.income(s.getId(), LocalDate.now(), "微光", m.getId(), "微光信箱", BigDecimal.ONE);
+            }
+            momentIds.add(m.getId());
+        }
+        return Map.of("momentIds", momentIds);
+    }
+
+    /** 照片公共校验（1~9 张、单张≤10MB、仅 jpg/jpeg/png），过滤空项 */
+    private List<MultipartFile> validatePhotos(List<MultipartFile> photos) {
+        List<MultipartFile> valid = photos == null ? List.of()
+                : photos.stream().filter(p -> p != null && !p.isEmpty()).toList();
+        if (valid.isEmpty()) {
+            throw new BizException(400, "请先拍照或选择照片");
+        }
+        if (valid.size() > 9) {
+            throw new BizException(400, "一次最多上传 9 张照片");
+        }
+        for (MultipartFile photo : valid) {
+            if (photo.getSize() > MAX_SIZE) {
+                throw new BizException(400, "照片不能超过 10MB");
+            }
+            String original = photo.getOriginalFilename() == null ? "" : photo.getOriginalFilename();
+            String ext = original.contains(".")
+                    ? original.substring(original.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT) : "";
+            if (!ext.equals("jpg") && !ext.equals("jpeg") && !ext.equals("png")) {
+                throw new BizException(400, "仅支持 jpg/jpeg/png 格式");
+            }
+        }
+        return valid;
+    }
+
+    /** 标签（1~5 个、单个≤32 字）与备注（≤500 字）公共校验，返回去重标签 */
+    private List<String> validateTagsAndNote(List<String> sceneTag, String note) {
+        List<String> tags = sceneTag == null ? List.of() : sceneTag.stream()
+                .filter(t -> t != null && !t.isBlank()).map(String::trim).distinct().toList();
+        if (tags.isEmpty()) {
+            throw new BizException(400, "请选择场景标签");
+        }
+        if (tags.size() > 5) {
+            throw new BizException(400, "场景标签最多选 5 个");
+        }
+        if (tags.stream().anyMatch(t -> t.length() > 32)) {
+            throw new BizException(400, "单个标签不能超过 32 字");
+        }
+        if (note != null && note.length() > 500) {
+            throw new BizException(400, "备注不能超过 500 字");
+        }
+        return tags;
     }
 
     /** 加分同步微光（批6 漏项D）：正向评价自动生成的无照片微光（source=EVAL_SYNC）。
@@ -256,8 +340,13 @@ public class MomentService {
         momentStudentMapper.delete(new LambdaQueryWrapper<MomentStudent>()
                 .eq(MomentStudent::getMomentId, id));
         if (m.getPhotoUrl() != null) {   // EVAL_SYNC（加分同步）无照片对象可删；批62 多图逐个删
-            for (String objectName : m.getPhotoUrl().split(",")) {
-                pdfStore.delete(objectName);
+            // 批75 走班微光：同一批照片对象被多条 Moment 共享（按行政班拆行），还有别的行引用时不删对象
+            boolean shared = momentMapper.selectCount(new LambdaQueryWrapper<Moment>()
+                    .eq(Moment::getPhotoUrl, m.getPhotoUrl()).ne(Moment::getId, id)) > 0;
+            if (!shared) {
+                for (String objectName : m.getPhotoUrl().split(",")) {
+                    pdfStore.delete(objectName);
+                }
             }
         }
         // 批48：删手动微光连带冲正已发的 1 扬长币（reverse 无行=本批之前的老数据没发过币，自然不冲）

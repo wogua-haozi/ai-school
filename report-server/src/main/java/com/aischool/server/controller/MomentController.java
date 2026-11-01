@@ -44,6 +44,17 @@ public class MomentController {
         return ApiResponse.ok(momentService.create(AuthUtil.current(), classId, studentIds, sceneTag, note, photos));
     }
 
+    /** 批75 走班微光：walkClassId + studentIds + sceneTag×N + note + photos——按学生行政班拆多条班级墙记录 */
+    @PostMapping("/walk")
+    public ApiResponse<Map<String, Object>> createWalk(@RequestParam Long walkClassId,
+                                                       @RequestParam(required = false) List<Long> studentIds,
+                                                       @RequestParam List<String> sceneTag,
+                                                       @RequestParam(required = false) String note,
+                                                       @RequestParam("photos") List<MultipartFile> photos) {
+        return ApiResponse.ok(momentService.createWalk(AuthUtil.current(), walkClassId, studentIds,
+                sceneTag, note, photos));
+    }
+
     /** 场景标签字典（批6 漏项H：教师端下拉用，家长 403） */
     @GetMapping("/tags")
     public ApiResponse<List<Map<String, Object>>> tags() {

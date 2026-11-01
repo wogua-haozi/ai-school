@@ -124,6 +124,11 @@ public class ExcelScoreHelper {
 
     /** 生成导入模板：表头=学号/姓名/[科目|科目等级]×n/总分等级（批63c 等级列），名册预填，成绩/等级留空 */
     public byte[] template(List<Student> roster, List<String> subjects) {
+        return template(roster, subjects, true);
+    }
+
+    /** 批75 走班模板走 totalGradeCol=false（走班导入只处理本学科列，不带总分等级列） */
+    public byte[] template(List<Student> roster, List<String> subjects, boolean totalGradeCol) {
         try (XSSFWorkbook wb = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             var sheet = wb.createSheet("成绩导入");
             var head = sheet.createRow(0);
@@ -134,7 +139,9 @@ public class ExcelScoreHelper {
                 head.createCell(c++).setCellValue(subj);
                 head.createCell(c++).setCellValue(subj + "等级");
             }
-            head.createCell(c++).setCellValue("总分等级");
+            if (totalGradeCol) {
+                head.createCell(c++).setCellValue("总分等级");
+            }
             int i = 1;
             for (Student st : roster) {
                 var row = sheet.createRow(i++);

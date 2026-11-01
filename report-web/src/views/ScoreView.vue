@@ -7,10 +7,16 @@
         <el-option v-for="e in exams" :key="e.id"
           :label="`${e.name}（${e.gradeName ?? '全部年级'} · ${e.termName}）${e.entryOpen === false ? ' · 录入已关闭' : ''}`" :value="e.id" />
       </el-select>
-      <el-select v-model="gradeId" placeholder="年级" style="min-width: 140px" @change="loadSubjects">
+      <!-- 批75 走班模式：我教的走班（选中即按走班名册录本学科；清空返回常规年级视图） -->
+      <el-select v-if="walkClasses.length" v-model="walkId" placeholder="我的走班" clearable
+        style="min-width: 190px" @change="onWalkChange">
+        <el-option v-for="w in walkClasses" :key="w.id"
+          :label="`${w.subjectName}走班 · ${w.name}`" :value="w.id" />
+      </el-select>
+      <el-select v-if="!walkMode()" v-model="gradeId" placeholder="年级" style="min-width: 140px" @change="loadSubjects">
         <el-option v-for="g in grades" :key="g.id" :label="g.name" :value="g.id" />
       </el-select>
-      <el-select v-if="subjectOptions.length" v-model="subjectId" placeholder="学科" style="min-width: 140px" @change="load">
+      <el-select v-if="!walkMode() && subjectOptions.length" v-model="subjectId" placeholder="学科" style="min-width: 140px" @change="load">
         <el-option v-for="s in subjectOptions" :key="s.subjectId" :label="s.name" :value="s.subjectId" />
       </el-select>
       <!-- 批63：建/改考试=可传可改者（管理员/书记/级长）；汇总页=排名可见角色（领导驾驶舱另有入口） -->
@@ -21,14 +27,16 @@
       <el-button v-if="['ADMIN', 'SECRETARY'].includes(auth.role) && examId" type="danger" plain @click="delExam">删除考试</el-button>
       <!-- 批63：导出=排名可见角色；模板/导入移入弹窗（导入永远单班） -->
       <el-button v-if="examId && gradeId && subjectId !== undefined && auth.canSeeRank" @click="exportXlsx">导出 Excel</el-button>
-      <el-button v-if="auth.scoreUpload && examId" @click="openImport">导入 / 模板</el-button>
+      <el-button v-if="(auth.scoreUpload || walkMode()) && examId" @click="openImport">导入 / 模板</el-button>
     </div>
 
     <el-card v-if="rows.length">
       <template #header>
-        {{ totalMode
-          ? `总分汇总（满分 ${fullScore ?? '未设置'}，按各科已录成绩现算，只读）`
-          : `成绩单（满分 ${fullScore ?? '未设置'}，保存后自动计算班级/年级排名；空白 = 未录入，清空分数后保存即删除）` }}
+        {{ walkMode()
+          ? `走班成绩单 · ${curWalk()?.name ?? ''}（满分 ${fullScore ?? '未设置'}，名次列=走班内名次；空白 = 未录入，清空后保存即删除）`
+          : totalMode
+            ? `总分汇总（满分 ${fullScore ?? '未设置'}，按各科已录成绩现算，只读）`
+            : `成绩单（满分 ${fullScore ?? '未设置'}，保存后自动计算班级/年级排名；空白 = 未录入，清空分数后保存即删除）` }}
       </template>
       <el-table :data="rows" size="small" max-height="560" :row-class-name="rowClass">
         <el-table-column prop="studentNo" label="学号" min-width="110" align="center" />
@@ -49,7 +57,7 @@
           </template>
         </el-table-column>
         <!-- 批63：排名列只对管理面角色显示（服务端已置 null，此处仅显示层） -->
-        <el-table-column v-if="auth.canSeeRank" label="班级名次" min-width="100" align="center">
+        <el-table-column v-if="auth.canSeeRank" :label="walkMode() ? '走班名次' : '班级名次'" min-width="100" align="center">
           <template #default="{ row }">{{ row.classRank ?? '—' }}</template>
         </el-table-column>
         <el-table-column v-if="auth.canSeeRank" label="年级名次" min-width="100" align="center">
@@ -69,6 +77,7 @@
         <el-tag v-if="!editable && !gradeEditable" size="small" type="info">{{ totalMode ? '总分模式只读' : '只读（批63：仅管理员、书记、级长可录入）' }}</el-tag>
       </div>
     </el-card>
+    <el-empty v-else-if="loaded && walkMode()" description="该走班暂无名册" />
     <el-empty v-else-if="loaded && examId && gradeId && !subjects.length"
       description="该考试尚未配置科目" />
     <el-empty v-else-if="loaded" description="选择考试/年级/学科后加载成绩单" />
@@ -134,23 +143,26 @@
       </template>
     </el-dialog>
 
-    <!-- 批63：模板/导入弹窗（导入永远单班，模板含该考试全部科目列） -->
-    <el-dialog v-model="importDialog" title="导入成绩（单班）" width="460px">
-      <el-form label-width="90px">
+    <!-- 批63：模板/导入弹窗（导入永远单班，模板含该考试全部科目列；批75 走班模式=走班名册单科） -->
+    <el-dialog v-model="importDialog" :title="walkMode() ? '导入成绩（走班）' : '导入成绩（单班）'" width="460px">
+      <el-form v-if="!walkMode()" label-width="90px">
         <el-form-item label="班级">
           <el-select v-model="importClassId" style="width: 100%">
             <el-option v-for="c in classes" :key="c.id" :label="c.name" :value="c.id" />
           </el-select>
         </el-form-item>
       </el-form>
-      <el-button :disabled="!importClassId" @click="downloadTemplate">下载模板（按考试科目）</el-button>
+      <div v-else style="margin-bottom: 10px; font-size: 13px">
+        走班：{{ curWalk()?.subjectName }} · {{ curWalk()?.name }}（模板=本走班名册+本学科一列）
+      </div>
+      <el-button :disabled="!walkMode() && !importClassId" @click="downloadTemplate">下载模板（按考试科目）</el-button>
       <el-upload drag :auto-upload="false" :limit="1" style="margin-top: 12px"
         :on-change="(f: any) => (importFile = f.raw)" :on-remove="() => (importFile = null)">
         <div class="el-upload__text">拖入或点击选择 .xlsx（多科列一次导入；某科留空 = 不动该科）</div>
       </el-upload>
       <template #footer>
         <el-button @click="importDialog = false">取消</el-button>
-        <el-button type="primary" :disabled="!importFile || !importClassId" :loading="importing" @click="doImport">导入</el-button>
+        <el-button type="primary" :disabled="!importFile || (!walkMode() && !importClassId)" :loading="importing" @click="doImport">导入</el-button>
       </template>
     </el-dialog>
   </div>
@@ -215,6 +227,12 @@ const importClassId = ref<number>()
 const importFile = ref<File | null>(null)
 const importing = ref(false)
 
+/* 批75 走班模式：走班教师按走班名册录本学科（subjectId 固定=走班学科，editable 由后端下发） */
+const walkClasses = ref<any[]>([])
+const walkId = ref<number>()
+const walkMode = () => walkId.value !== undefined
+const curWalk = () => walkClasses.value.find((w) => w.id === walkId.value)
+
 /** 批63：subjectId=0 为总分选项（请求时不传 subjectId，后端汇总各科并现算排名） */
 const TOTAL = 0
 const subjectOptions = ref<any[]>([])
@@ -253,6 +271,10 @@ async function init() {
       }
     } catch { /* 深链失效则保持默认视图 */ }
   }
+  // 批75 我教的走班（普通教师无此数据则不显示下拉）
+  try {
+    walkClasses.value = await api<any[]>('/api/meta/walk-classes')
+  } catch { /* 无走班数据不影响常规视图 */ }
   // 无班无课教师走不到 load()：兜底置 loaded，让空态提示（而非空白）出现
   loaded.value = true
 }
@@ -262,7 +284,31 @@ async function onExamChange() {
   subjectOptions.value = []
   subjectId.value = undefined
   rows.value = []
+  if (walkMode()) {
+    await loadWalk()
+    return
+  }
   await loadSubjects()
+}
+
+/** 批75 切换走班/常规视图 */
+async function onWalkChange() {
+  rows.value = []
+  if (walkMode()) {
+    await loadWalk()
+  } else if (examId.value && gradeId.value) {
+    await loadSubjects()
+  }
+}
+
+async function loadWalk() {
+  if (!examId.value || !walkId.value) return
+  const d = await api<any>(`/api/score/list?examId=${examId.value}&walkClassId=${walkId.value}`)
+  rows.value = d.rows
+  fullScore.value = d.fullScore
+  editable.value = d.editable
+  gradeEditable.value = d.gradeEditable
+  loaded.value = true
 }
 
 async function loadSubjects() {
@@ -280,6 +326,7 @@ async function loadSubjects() {
 }
 
 async function load() {
+  if (walkMode()) return loadWalk()
   if (!examId.value || !gradeId.value || subjectId.value === undefined) return
   const sub = totalMode() ? '' : `&subjectId=${subjectId.value}`
   const d = await api<any>(`/api/score/list?examId=${examId.value}&gradeId=${gradeId.value}${sub}`)
@@ -297,7 +344,8 @@ async function delScore(row: any) {
     method: 'PUT',
     json: {
       examId: examId.value,
-      subjectId: subjectId.value,
+      subjectId: walkMode() ? curWalk()!.subjectId : subjectId.value,
+      walkClassId: walkMode() ? walkId.value : undefined,
       rows: [{ studentId: row.studentId, score: null, grade: null }],
     },
   })
@@ -308,6 +356,21 @@ async function delScore(row: any) {
 async function save() {
   saving.value = true
   try {
+    // 批75 走班模式：分数+等级一并走 entry（walkClassId 分流后端，无 entry-grade 权限依赖）
+    if (walkMode()) {
+      const r = await api<{ saved?: number }>('/api/score/entry', {
+        method: 'PUT',
+        json: {
+          examId: examId.value,
+          subjectId: curWalk()!.subjectId,
+          walkClassId: walkId.value,
+          rows: rows.value.map((x: any) => ({ studentId: x.studentId, score: x.score, grade: x.grade || null })),
+        },
+      })
+      ElMessage.success(`已保存 ${r.saved ?? 0} 条`)
+      await load()
+      return
+    }
     let saved = 0
     if (editable.value) {
       const r = await api<{ saved?: number }>('/api/score/entry', {
@@ -408,8 +471,12 @@ function openImport() {
 }
 
 async function downloadTemplate() {
-  const blob = await fetchBlob(`/api/score/template?examId=${examId.value}&classId=${importClassId.value}`)
-  const cls = classes.value.find((c) => c.id === importClassId.value)?.name ?? ''
+  const blob = walkMode()
+    ? await fetchBlob(`/api/score/template?examId=${examId.value}&walkClassId=${walkId.value}`)
+    : await fetchBlob(`/api/score/template?examId=${examId.value}&classId=${importClassId.value}`)
+  const cls = walkMode()
+    ? `走班${curWalk()?.name ?? ''}`
+    : classes.value.find((c) => c.id === importClassId.value)?.name ?? ''
   await saveFile(blob, `成绩导入模板_${cls}.xlsx`)
 }
 
@@ -428,8 +495,10 @@ async function doImport() {
   try {
     const form = new FormData()
     form.append('file', importFile.value)
-    const r = await apiForm<{ saved: number; skipped: { reason: string }[] }>(
-      `/api/score/import?examId=${examId.value}&classId=${importClassId.value}`, form)
+    const url = walkMode()
+      ? `/api/score/import?examId=${examId.value}&walkClassId=${walkId.value}`
+      : `/api/score/import?examId=${examId.value}&classId=${importClassId.value}`
+    const r = await apiForm<{ saved: number; skipped: { reason: string }[] }>(url, form)
     ElMessage.success(`导入 ${r.saved} 条，跳过 ${r.skipped?.length ?? 0} 条`)
     if (r.skipped?.length) {
       ElMessage.warning(r.skipped.map((s: any) => s.reason).join('；').slice(0, 200))

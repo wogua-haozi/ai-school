@@ -110,7 +110,7 @@
 import { computed, markRaw, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { motion } from 'motion-v'
-import { Aim, AlarmClock, ArrowLeftBold, Calendar, ChatDotRound, ChatLineRound, Coin, DataLine, Document, FirstAidKit, FolderOpened, Goods as GoodsIcon, Histogram, Iphone, Medal, OfficeBuilding, Picture, Postcard, Promotion, School, Setting, Stamp, Sunset, Tickets, Tools, TrendCharts, Upload, User, Avatar } from '@element-plus/icons-vue'
+import { Aim, AlarmClock, ArrowLeftBold, Calendar, ChatDotRound, ChatLineRound, Coin, Connection, DataLine, Document, FirstAidKit, FolderOpened, Goods as GoodsIcon, Histogram, Iphone, Medal, OfficeBuilding, Picture, Postcard, Promotion, School, Setting, Stamp, Sunset, Tickets, Tools, TrendCharts, Upload, User, Avatar } from '@element-plus/icons-vue'
 import { api } from '../api/http'
 import { useAuthStore } from '../stores/auth'
 import TeacherTab from '../components/admin/TeacherTab.vue'
@@ -121,6 +121,7 @@ import HealthTab from '../components/admin/HealthTab.vue'
 import ContentTab from '../components/admin/ContentTab.vue'
 import TeacherProfileTab from '../components/admin/TeacherProfileTab.vue'
 import OrgTab from '../components/admin/OrgTab.vue'
+import WalkClassTab from '../components/admin/WalkClassTab.vue'
 import StudentTab from '../components/admin/StudentTab.vue'
 import TermTab from '../components/admin/TermTab.vue'
 import ExamTab from '../components/admin/ExamTab.vue'
@@ -179,6 +180,7 @@ const TABS: Record<string, { label: string; comp: any; icon: any }> = {
   content: { label: '内容发布', comp: markRaw(ContentTab), icon: Promotion },
   appRelease: { label: '版本更新', comp: markRaw(AppReleaseTab), icon: Upload },
   org: { label: '年级与班级', comp: markRaw(OrgTab), icon: School },
+  walkClass: { label: '走班分班', comp: markRaw(WalkClassTab), icon: Connection },
   student: { label: '学生', comp: markRaw(StudentTab), icon: Avatar },
   term: { label: '学期', comp: markRaw(TermTab), icon: Calendar },
   schoolYear: { label: '学年滚动', comp: markRaw(SchoolYearTab), icon: Sunset },
@@ -205,7 +207,7 @@ const TABS: Record<string, { label: string; comp: any; icon: any }> = {
    原「基础数据/系统运维」两个杂物间拆散归位：物资/场地/归档→总务后勤，谈心/足迹→德育激励等 */
 const groups = [
   { key: 'people', label: '人员账号', icon: User, items: ['teacher', 'usage', 'parent', 'roleRequest', 'teacherProfile'] },
-  { key: 'edu', label: '教学教务', icon: School, items: ['org', 'student', 'term', 'schoolYear', 'exam', 'score', 'duty', 'template'] },
+  { key: 'edu', label: '教学教务', icon: School, items: ['org', 'walkClass', 'student', 'term', 'schoolYear', 'exam', 'score', 'duty', 'template'] },
   { key: 'moral', label: '德育激励', icon: Medal, items: ['civility', 'indicator', 'shop', 'talk', 'moment', 'footprint'] },
   { key: 'logi', label: '总务后勤', icon: OfficeBuilding, items: ['goods', 'repair', 'venue', 'archive'] },
   { key: 'appr', label: '审批与反馈', icon: Stamp, items: ['oa', 'feedback'] },

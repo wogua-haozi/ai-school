@@ -46,6 +46,7 @@ public class MetaController {
     private final SubjectMapper subjectMapper;
     private final UserMapper userMapper;
     private final DataScopeService dataScopeService;
+    private final com.aischool.server.service.walk.WalkClassService walkClassService;
 
     @GetMapping("/terms")
     public ApiResponse<List<Term>> terms() {
@@ -139,6 +140,59 @@ public class MetaController {
                     m.put("name", s.getName());
                     return m;
                 }).toList());
+    }
+
+    // ───────── 批75 走班（教学班）：成绩录入/微光分组入口 ─────────
+
+    /** 我教的走班（成绩/微光下拉用；含学科/年级/人数） */
+    @GetMapping("/walk-classes")
+    public ApiResponse<List<Map<String, Object>>> myWalkClasses() {
+        checkTeacherSide();
+        var user = AuthUtil.current();
+        Map<Long, String> subjectNames = subjectMapper.selectList(null).stream()
+                .collect(java.util.stream.Collectors.toMap(Subject::getId, Subject::getName));
+        return ApiResponse.ok(walkClassService.byTeacher(user.userId()).stream().map(w -> {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", w.getId());
+            m.put("name", w.getName());
+            m.put("gradeId", w.getGradeId());
+            m.put("subjectId", w.getSubjectId());
+            m.put("subjectName", subjectNames.get(w.getSubjectId()));
+            return m;
+        }).toList());
+    }
+
+    /** 走班名册（按学号序，附行政班名）：走班教师/管理面角色可用（微光选人、成绩录入同源） */
+    @GetMapping("/walk-class-students")
+    public ApiResponse<List<Map<String, Object>>> walkClassStudents(@RequestParam Long walkClassId) {
+        checkTeacherSide();
+        var user = AuthUtil.current();
+        var w = walkClassService.requireWalk(walkClassId);
+        boolean walkTeacher = user.userId().equals(w.getTeacherId());
+        String role = user.role();
+        boolean adminSide = "ADMIN".equals(role) || "SECRETARY".equals(role)
+                || "DIRECTOR".equals(role) || "LEADER".equals(role);
+        // 级长：可见班级里有该走班年级的班即可（与成绩线 examScopeGrades 同思路）
+        boolean gradeLeaderOk = false;
+        if ("GRADE_LEADER".equals(role)) {
+            List<Long> visible = dataScopeService.visibleClassIds(user);
+            gradeLeaderOk = visible != null && !visible.isEmpty()
+                    && clazzMapper.selectList(new LambdaQueryWrapper<Clazz>().in(Clazz::getId, visible))
+                            .stream().anyMatch(c -> w.getGradeId().equals(c.getGradeId()));
+        }
+        if (!walkTeacher && !adminSide && !gradeLeaderOk) {
+            throw new BizException(403, "仅该走班教师或管理面角色可查看走班名册");
+        }
+        Map<Long, String> classNames = clazzMapper.selectList(null).stream()
+                .collect(java.util.stream.Collectors.toMap(Clazz::getId, Clazz::getName, (a, b) -> a));
+        return ApiResponse.ok(walkClassService.walkRoster(walkClassId).stream().map(s -> {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", s.getId());
+            m.put("name", s.getName());
+            m.put("studentNo", s.getStudentNo());
+            m.put("className", classNames.getOrDefault(s.getClassId(), "—"));
+            return m;
+        }).toList());
     }
 
     /** 教师侧守卫：仅拒家长/门卫（批56③ 素养评价口径，同 StudentController） */

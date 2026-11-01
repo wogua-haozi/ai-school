@@ -53,6 +53,7 @@ public class ScoreController {
         @NotNull(message = "subjectId 不能为空")
         private Long subjectId;
         private Long classId; // 批63 可空=年级模式（按 studentId 逐行校验跨班保存）
+        private Long walkClassId; // 批75 走班模式（与 classId 互斥；学生限本走班名册）
         private List<ScoreService.RowReq> rows;
     }
 
@@ -129,12 +130,16 @@ public class ScoreController {
         return ApiResponse.ok(scoreService.subjectContext(AuthUtil.current(), examId, classId, gradeId));
     }
 
-    /** 成绩单（classId 单班 / gradeId 年级；subjectId 空=总分；班主任/科任只读无排名） */
+    /** 成绩单（classId 单班 / gradeId 年级；subjectId 空=总分；班主任/科任只读无排名；批75 walkClassId=走班名册） */
     @GetMapping("/list")
     public ApiResponse<Map<String, Object>> list(@RequestParam Long examId,
                                                  @RequestParam(required = false) Long subjectId,
                                                  @RequestParam(required = false) Long classId,
-                                                 @RequestParam(required = false) Long gradeId) {
+                                                 @RequestParam(required = false) Long gradeId,
+                                                 @RequestParam(required = false) Long walkClassId) {
+        if (walkClassId != null) {
+            return ApiResponse.ok(scoreService.listWalkScores(AuthUtil.current(), examId, walkClassId));
+        }
         return ApiResponse.ok(scoreService.listScores(AuthUtil.current(), examId, subjectId, classId, gradeId));
     }
 
@@ -154,9 +159,13 @@ public class ScoreController {
                 .body(f.content());
     }
 
-    /** 批量录入（score=null 清除；classId 空=年级模式跨班保存，批63） */
+    /** 批量录入（score=null 清除；classId 空=年级模式跨班保存，批63；walkClassId=走班模式，批75） */
     @PutMapping("/entry")
     public ApiResponse<Map<String, Object>> entry(@Validated @RequestBody EntryReq req) {
+        if (req.getWalkClassId() != null) {
+            return ApiResponse.ok(scoreService.entryWalk(AuthUtil.current(), req.getExamId(),
+                    req.getWalkClassId(), req.getSubjectId(), req.getRows()));
+        }
         return ApiResponse.ok(scoreService.entry(AuthUtil.current(), req.getExamId(), req.getSubjectId(),
                 req.getClassId(), req.getRows()));
     }
@@ -168,18 +177,26 @@ public class ScoreController {
                 req.getSubjectId(), req.getRows()));
     }
 
-    /** Excel 导入（单班多科：file + examId/classId，科目列按模板表头匹配，批63） */
+    /** Excel 导入（单班多科：file + examId/classId，科目列按模板表头匹配，批63；批75 walkClassId=走班单科） */
     @PostMapping("/import")
     public ApiResponse<Map<String, Object>> importExcel(@RequestParam Long examId,
-                                                        @RequestParam Long classId,
+                                                        @RequestParam(required = false) Long classId,
+                                                        @RequestParam(required = false) Long walkClassId,
                                                         @RequestParam("file") MultipartFile file) {
+        if (walkClassId != null) {
+            return ApiResponse.ok(scoreService.importWalkExcel(AuthUtil.current(), examId, walkClassId, file));
+        }
         return ApiResponse.ok(scoreService.importExcel(AuthUtil.current(), examId, classId, file));
     }
 
-    /** 下载导入模板（该班名册预填，列=考试设定科目，批63） */
+    /** 下载导入模板（该班名册预填，列=考试设定科目，批63；批75 walkClassId=走班名册单科） */
     @GetMapping("/template")
-    public ResponseEntity<byte[]> template(@RequestParam Long examId, @RequestParam Long classId) {
-        byte[] bytes = scoreService.template(AuthUtil.current(), examId, classId);
+    public ResponseEntity<byte[]> template(@RequestParam Long examId,
+                                           @RequestParam(required = false) Long classId,
+                                           @RequestParam(required = false) Long walkClassId) {
+        byte[] bytes = walkClassId != null
+                ? scoreService.templateWalk(AuthUtil.current(), examId, walkClassId)
+                : scoreService.template(AuthUtil.current(), examId, classId);
         String filename = URLEncoder.encode("成绩导入模板.xlsx", StandardCharsets.UTF_8);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + filename)
