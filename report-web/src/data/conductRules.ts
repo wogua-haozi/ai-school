@@ -22,7 +22,7 @@ export const CONDUCT_SECTIONS: ConductSection[] = [
     { label: '纪律扣分', items: [
       { text: '晚归、迟就寝', delta: '-1', unit: '每人' },
       { text: '正钟后讲话、打闹、迟东西（包括牛奶、水果）走动喧哗，严重影响他人休息', delta: '-1', unit: '每人' },
-      { text: '任何时候，宿舍禁止追逐打闹、大声喧哗，一旦发现，每人1分', delta: '', unit: '' },
+      { text: '任何时候，宿舍禁止追逐打闹、大声喧哗，一旦发现', delta: '-1', unit: '每人' },
       { text: '私自串寝，私自调换床位，双方', delta: '-2', unit: '每人' },
       { text: '顶撞宿管，不服从管理，态度恶劣', delta: '-3', unit: '每人' },
       { text: '故意在宿舍内争吵、起哄、制造矛盾', delta: '-3', unit: '每人' },
@@ -43,7 +43,7 @@ export const CONDUCT_SECTIONS: ConductSection[] = [
       { text: '洗手池污渍，日用品摆放不规范，宿舍', delta: '-1', unit: '' },
       { text: '窗台、床底、墙角积灰、有蜘蛛网，宿舍', delta: '-1', unit: '' },
       { text: '被子未叠、凌乱不规范，宿舍', delta: '-1', unit: '' },
-      { text: '床上、柜子堆放杂物，衣物、鞋子摆放不整齐', delta: '', unit: '' },
+      { text: '床上、柜子堆放杂物，衣物、鞋子摆放不整齐', delta: '-1', unit: '' },
       { text: '垃圾不倒、卫生间脏乱有异味，宿舍', delta: '-1', unit: '' },
     ] },
     { label: '内务卫生加分', items: [
